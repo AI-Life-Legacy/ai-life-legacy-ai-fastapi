@@ -17,3 +17,7 @@ Thumbs.db
 
 # Environment variables
 .env
+
+# Storage
+storage/
+app/storage/
