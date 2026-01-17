@@ -4,7 +4,7 @@ from app.core.config import settings
 
 app = FastAPI(title="AI Life Legacy Server")
 
-app.include_router(api_router, prefix="/api/v1")
+app.include_router(api_router, prefix="/api")
 
 @app.get("/")
 def health_check():

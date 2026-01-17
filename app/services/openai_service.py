@@ -1,6 +1,7 @@
 from openai import AsyncOpenAI
 from app.core.config import settings
 from app.prompts.templates import PROMPTS
+from app.services.vector_store import search_context
 import json
 
 client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
@@ -28,10 +29,18 @@ async def classify_user_case(intro_text: str) -> str:
     
     return json.dumps({"case": content, "reasoning": "Classified by AI"})
 
-async def generate_follow_up_question(original_question: str, user_answer: str) -> str:
+async def generate_follow_up_question(user_id: str, original_question: str, user_answer: str) -> str:
+    # 1. RAG: 관련 문맥 검색
+    results = await search_context(user_id, f"{original_question} {user_answer}", n_results=3)
+    context_text = "\n".join([f"- {doc.page_content}" for doc, _ in results])
+    if not context_text:
+        context_text = "관련된 과거 기록이 없습니다."
+
+    # 2. 프롬프트 구성
     prompt_content = PROMPTS["QUESTION_GENERATION_USER"].format(
         question=original_question, 
-        answer=user_answer
+        answer=user_answer,
+        context=context_text
     )
 
     response = await client.chat.completions.create(
@@ -43,19 +52,45 @@ async def generate_follow_up_question(original_question: str, user_answer: str) 
     )
     return response.choices[0].message.content.strip()
 
-async def combine_answers_to_autobiography(pairs: list) -> str:
-    # pairs 리스트에서 첫 번째와 두 번째 질문/답변을 추출한다고 가정 (명세상 question1, question2 등)
-    # 리스트 길이가 2 이상이어야 함. 안전하게 처리.
+async def combine_answers_to_autobiography(user_id: str, pairs: list) -> str:
+    # pairs 리스트에서 첫 번째와 두 번째 질문/답변을 추출
     q1 = pairs[0].question if len(pairs) > 0 else ""
     a1 = pairs[0].answer if len(pairs) > 0 else ""
     q2 = pairs[1].question if len(pairs) > 1 else ""
     a2 = pairs[1].answer if len(pairs) > 1 else ""
     
-    # 더 많은 질문이 있을 경우 어떻게 할지 명세에는 없으므로, 일단 2개만 처리하거나 반복문으로 합쳐야 함.
-    # 현재 `combine.prompt.ts`는 명시적으로 2개의 질문/답변을 인자로 받음.
+    # RAG 검색 쿼리: 질문과 답변을 모두 포함
+    search_query = f"{q1} {a1} {q2} {a2}"
+    results = await search_context(user_id, search_query, n_results=3)
+    context_text = "\n".join([f"- {doc.page_content}" for doc, _ in results])
+    if not context_text:
+        context_text = "관련된 과거 기록이 없습니다."
     
     prompt_content = PROMPTS["AUTOBIOGRAPHY_COMBINATION_USER"].format(
-        q1=q1, a1=a1, q2=q2, a2=a2
+        q1=q1, a1=a1, q2=q2, a2=a2,
+        context=context_text
+    )
+
+    response = await client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[
+            {"role": "user", "content": prompt_content}
+        ],
+        temperature=0.7
+    )
+    return response.choices[0].message.content.strip()
+
+async def generate_avatar_response(user_id: str, user_message: str) -> str:
+    # 1. RAG 검색
+    results = await search_context(user_id, user_message, n_results=3)
+    context_text = "\n".join([f"- {doc.page_content}" for doc, _ in results])
+    if not context_text:
+        context_text = "특별한 과거 기록이 없습니다."
+
+    # 2. 프롬프트 구성
+    prompt_content = PROMPTS["AVATAR_CHAT_PROMPT"].format(
+        context=context_text,
+        user_message=user_message
     )
 
     response = await client.chat.completions.create(

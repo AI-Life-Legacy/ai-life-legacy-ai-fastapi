@@ -10,7 +10,7 @@ router = APIRouter()
 @router.post("/question", response_model=QuestionResponse)
 async def create_follow_up_question(request: QuestionRequest):
     try:
-        question_text = await generate_follow_up_question(request.originalQuestion, request.userAnswer)
+        question_text = await generate_follow_up_question(request.userId, request.originalQuestion, request.userAnswer)
         return QuestionResponse(question=question_text)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -18,7 +18,7 @@ async def create_follow_up_question(request: QuestionRequest):
 @router.post("/autobiography", response_model=AutobiographyResponse)
 async def create_autobiography(request: AutobiographyRequest):
     try:
-        content = await combine_answers_to_autobiography(request.pairs)
+        content = await combine_answers_to_autobiography(request.userId, request.pairs)
         return AutobiographyResponse(content=content)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

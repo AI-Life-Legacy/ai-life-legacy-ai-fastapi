@@ -2,6 +2,7 @@ from pydantic import BaseModel
 from typing import List
 
 class QuestionRequest(BaseModel):
+    userId: str
     originalQuestion: str
     userAnswer: str
 
@@ -13,6 +14,7 @@ class QaPair(BaseModel):
     answer: str
 
 class AutobiographyRequest(BaseModel):
+    userId: str
     pairs: List[QaPair]
 
 class AutobiographyResponse(BaseModel):
