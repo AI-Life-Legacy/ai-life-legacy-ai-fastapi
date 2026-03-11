@@ -80,7 +80,7 @@ async def combine_answers_to_autobiography(user_id: str, pairs: list) -> str:
     )
     return response.choices[0].message.content.strip()
 
-async def generate_avatar_response(user_id: str, user_message: str) -> str:
+async def generate_avatar_response(user_id: str, user_message: str, role: str) -> str:
     # 1. RAG 검색
     results = await search_context(user_id, user_message, n_results=3)
     context_text = "\n".join([f"- {doc.page_content}" for doc, _ in results])
@@ -90,7 +90,8 @@ async def generate_avatar_response(user_id: str, user_message: str) -> str:
     # 2. 프롬프트 구성
     prompt_content = PROMPTS["AVATAR_CHAT_PROMPT"].format(
         context=context_text,
-        user_message=user_message
+        user_message=user_message,
+        role=role
     )
 
     response = await client.chat.completions.create(

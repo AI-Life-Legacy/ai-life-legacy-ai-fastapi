@@ -7,7 +7,7 @@ router = APIRouter()
 @router.post("/chat", response_model=ChatResponse)
 async def chat_with_avatar(request: ChatRequest):
     try:
-        response_text = await generate_avatar_response(request.userId, request.message)
+        response_text = await generate_avatar_response(request.userId, request.message, request.role)
         return ChatResponse(response=response_text)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
