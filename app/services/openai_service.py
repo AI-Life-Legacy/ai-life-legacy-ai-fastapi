@@ -87,11 +87,10 @@ async def generate_avatar_response(user_id: str, user_message: str, role: str) -
     if not context_text:
         context_text = "특별한 과거 기록이 없습니다."
 
-    # 2. 프롬프트 구성
+    # 2. 프롬프트 구성 (역할을 '아버지'로 고정)
     prompt_content = PROMPTS["AVATAR_CHAT_PROMPT"].format(
         context=context_text,
-        user_message=user_message,
-        role=role
+        user_message=user_message
     )
 
     response = await client.chat.completions.create(

@@ -62,8 +62,23 @@ async def search_context(user_id: str, query: str, n_results: int = 3) -> List[T
     return await run_in_threadpool(_search_context_sync, user_id, query, n_results)
 
 def _search_context_sync(user_id: str, query: str, n_results: int = 3) -> List[Tuple[Document, float]]:
-    return vector_store.similarity_search_with_score(
+    # 1. 사용자 전용 데이터 검색
+    user_results = vector_store.similarity_search_with_score(
         query,
         k=n_results,
         filter={"user_id": user_id}
     )
+    
+    # 2. 글로벌(아바타) 데이터 검색
+    global_results = vector_store.similarity_search_with_score(
+        query,
+        k=n_results,
+        filter={"user_id": "__GLOBAL__"}
+    )
+    
+    # 3. 결과 합치기 및 정렬 (유사도 기준)
+    # Chroma scores: 낮은 값일수록 더 유사함 (L2 distance 등)
+    all_results = user_results + global_results
+    all_results.sort(key=lambda x: x[1])
+    
+    return all_results[:n_results]
