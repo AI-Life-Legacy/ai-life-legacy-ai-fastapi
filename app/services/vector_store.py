@@ -82,3 +82,20 @@ def _search_context_sync(user_id: str, query: str, n_results: int = 3) -> List[T
     all_results.sort(key=lambda x: x[1])
     
     return all_results[:n_results]
+async def retrieve_all_user_contexts(user_id: str, limit: int = 15) -> str:
+    """
+    사용자의 모든 생애 데이터를 검색하여 하나의 텍스트로 합쳐서 반환합니다.
+    """
+    return await run_in_threadpool(_retrieve_all_user_contexts_sync, user_id, limit)
+
+def _retrieve_all_user_contexts_sync(user_id: str, limit: int = 15) -> str:
+    # 1. 특정 사용자의 데이터 검색 (최신순 또는 중요도순이겠으나 여기서는 관련성 높은 순으로 다수 가져옴)
+    # 실제로는 '인생 전체'를 아우르는 쿼리를 던져서 관련 문서를 많이 가져오는 방식
+    query = "사용자의 생애, 성장 과정, 가족, 학창 시절, 직장 생활, 현재 삶, 미래 계획"
+    
+    # 해당 사용자의 데이터와 글로벌 데이터를 함께 조회
+    results = _search_context_sync(user_id, query, n_results=limit)
+    
+    # 2. 텍스트 추출 및 결합
+    contexts = [doc.page_content for doc, score in results]
+    return "\n\n".join(contexts)
