@@ -2,6 +2,7 @@ import asyncio
 import os
 from pathlib import Path
 import sys
+import traceback
 
 # Project root setup
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -38,6 +39,7 @@ async def main():
         
     except Exception as e:
         print(f"Error during generation: {e}")
+        traceback.print_exc()
 
 if __name__ == "__main__":
     asyncio.run(main())
