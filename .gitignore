@@ -21,3 +21,4 @@ Thumbs.db
 # Storage
 storage/
 app/storage/
+storage/data/

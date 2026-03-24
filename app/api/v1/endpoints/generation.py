@@ -1,9 +1,15 @@
 from fastapi import APIRouter, HTTPException
 from app.schemas.generation import (
     QuestionRequest, QuestionResponse, 
-    AutobiographyRequest, AutobiographyResponse
+    AutobiographyRequest, AutobiographyResponse,
+    FullAutobiographyRequest, FullAutobiographyResponse
 )
 from app.services.openai_service import generate_follow_up_question, combine_answers_to_autobiography
+from app.services.autobiography_service import autobiography_service
+from app.services.pdf_service import pdf_service
+from app.core.config import settings, BASE_DIR
+from pathlib import Path
+import os
 
 router = APIRouter()
 
@@ -21,4 +27,33 @@ async def create_autobiography(request: AutobiographyRequest):
         content = await combine_answers_to_autobiography(request.userId, request.pairs)
         return AutobiographyResponse(content=content)
     except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/full-autobiography", response_model=FullAutobiographyResponse)
+async def create_full_autobiography(request: FullAutobiographyRequest):
+    try:
+        # 1. Generate Markdown content using RAG service
+        md_content = await autobiography_service.generate_autobiography_memoir(request.userId, request.userName)
+        
+        # 2. Save MarkDown to storage
+        storage_path = Path(BASE_DIR) / "storage" / "data"
+        os.makedirs(storage_path, exist_ok=True)
+        
+        md_filename = f"autobiography_{request.userId}.md"
+        md_file_path = storage_path / md_filename
+        with open(md_file_path, "w", encoding="utf-8") as f:
+            f.write(md_content)
+            
+        # 3. Generate PDF from MarkDown
+        pdf_filename = f"autobiography_{request.userId}.premium.pdf"
+        pdf_file_path = storage_path / pdf_filename
+        pdf_service.generate_premium_pdf(md_content, str(pdf_file_path))
+        
+        return FullAutobiographyResponse(
+            status="success",
+            mdPath=str(md_file_path),
+            pdfPath=str(pdf_file_path)
+        )
+    except Exception as e:
+        print(f"Error in full-autobiography generation: {e}")
         raise HTTPException(status_code=500, detail=str(e))

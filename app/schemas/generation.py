@@ -19,3 +19,12 @@ class AutobiographyRequest(BaseModel):
 
 class AutobiographyResponse(BaseModel):
     content: str
+
+class FullAutobiographyRequest(BaseModel):
+    userId: str
+    userName: str
+
+class FullAutobiographyResponse(BaseModel):
+    status: str
+    mdPath: str
+    pdfPath: str
