@@ -9,22 +9,11 @@ class QuestionRequest(BaseModel):
 class QuestionResponse(BaseModel):
     question: str
 
-class QaPair(BaseModel):
-    question: str
-    answer: str
-
 class AutobiographyRequest(BaseModel):
-    userId: str
-    pairs: List[QaPair]
-
-class AutobiographyResponse(BaseModel):
-    content: str
-
-class FullAutobiographyRequest(BaseModel):
     userId: str
     userName: str
 
-class FullAutobiographyResponse(BaseModel):
+class AutobiographyResponse(BaseModel):
     status: str
     mdPath: str
     pdfPath: str

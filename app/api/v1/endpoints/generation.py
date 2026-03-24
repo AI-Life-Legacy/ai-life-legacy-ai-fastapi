@@ -1,10 +1,9 @@
 from fastapi import APIRouter, HTTPException
 from app.schemas.generation import (
     QuestionRequest, QuestionResponse, 
-    AutobiographyRequest, AutobiographyResponse,
-    FullAutobiographyRequest, FullAutobiographyResponse
+    AutobiographyRequest, AutobiographyResponse
 )
-from app.services.openai_service import generate_follow_up_question, combine_answers_to_autobiography
+from app.services.openai_service import generate_follow_up_question
 from app.services.autobiography_service import autobiography_service
 from app.services.pdf_service import pdf_service
 from app.core.config import settings, BASE_DIR
@@ -24,14 +23,6 @@ async def create_follow_up_question(request: QuestionRequest):
 @router.post("/autobiography", response_model=AutobiographyResponse)
 async def create_autobiography(request: AutobiographyRequest):
     try:
-        content = await combine_answers_to_autobiography(request.userId, request.pairs)
-        return AutobiographyResponse(content=content)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@router.post("/full-autobiography", response_model=FullAutobiographyResponse)
-async def create_full_autobiography(request: FullAutobiographyRequest):
-    try:
         # 1. Generate Markdown content using RAG service
         md_content = await autobiography_service.generate_autobiography_memoir(request.userId, request.userName)
         
@@ -49,11 +40,11 @@ async def create_full_autobiography(request: FullAutobiographyRequest):
         pdf_file_path = storage_path / pdf_filename
         pdf_service.generate_premium_pdf(md_content, str(pdf_file_path))
         
-        return FullAutobiographyResponse(
+        return AutobiographyResponse(
             status="success",
             mdPath=str(md_file_path),
             pdfPath=str(pdf_file_path)
         )
     except Exception as e:
-        print(f"Error in full-autobiography generation: {e}")
+        print(f"Error in autobiography generation: {e}")
         raise HTTPException(status_code=500, detail=str(e))

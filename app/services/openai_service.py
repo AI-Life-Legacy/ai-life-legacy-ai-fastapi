@@ -52,25 +52,6 @@ async def generate_follow_up_question(user_id: str, original_question: str, user
     )
     return response.choices[0].message.content.strip()
 
-async def combine_answers_to_autobiography(user_id: str, pairs: list) -> str:
-    # pairs 리스트에서 첫 번째와 두 번째 질문/답변을 추출
-    q1 = pairs[0].question if len(pairs) > 0 else ""
-    a1 = pairs[0].answer if len(pairs) > 0 else ""
-    q2 = pairs[1].question if len(pairs) > 1 else ""
-    a2 = pairs[1].answer if len(pairs) > 1 else ""
-    
-    # RAG 검색 쿼리: 질문과 답변을 모두 포함
-    search_query = f"{q1} {a1} {q2} {a2}"
-    results = await search_context(user_id, search_query, n_results=3)
-    context_text = "\n".join([f"- {doc.page_content}" for doc, _ in results])
-    if not context_text:
-        context_text = "관련된 과거 기록이 없습니다."
-    
-    prompt_content = PROMPTS["AUTOBIOGRAPHY_COMBINATION_USER"].format(
-        q1=q1, a1=a1, q2=q2, a2=a2,
-        context=context_text
-    )
-
     response = await client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[
