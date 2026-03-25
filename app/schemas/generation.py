@@ -11,7 +11,7 @@ class QuestionResponse(BaseModel):
 
 class AutobiographyRequest(BaseModel):
     userId: str
-    userName: str
+    userName: str = "사용자"
 
 class AutobiographyResponse(BaseModel):
     status: str

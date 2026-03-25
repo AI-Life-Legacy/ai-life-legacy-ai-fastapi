@@ -8,19 +8,20 @@ from app.core.config import settings
 
 # Project root setup (using settings if available)
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-# Default Artifact Dir (should be configurable or dynamic, but using the one from the script for now)
-ARTIFACT_DIR = Path(r"C:\Users\rmswn\.gemini\antigravity\brain\15aee333-3881-490a-804e-34d2290adc99")
+# Default Asset Dir (Try local 'assets' folder in project root)
+ASSETS_DIR = Path(settings.CHROMA_DB_PATH).parent / "assets"
+os.makedirs(ASSETS_DIR, exist_ok=True)
 
 # Thematic assets (assigned by mood)
 MOOD_ASSETS = {
-    "childhood": str(ARTIFACT_DIR / "memoir_childhood_warm_yard_1773758498739.png"),
-    "youth": str(ARTIFACT_DIR / "memoir_youth_city_bicycle_1773758588102.png"),
-    "career": str(ARTIFACT_DIR / "memoir_nostalgia_1_1773714327864.png"), # Fallback
-    "marriage": str(ARTIFACT_DIR / "memoir_nostalgia_2_1773714346454.png"),
-    "crisis": str(ARTIFACT_DIR / "memoir_nostalgia_3_1773714360412.png"),
-    "family": str(ARTIFACT_DIR / "memoir_nostalgia_4_1773714379542.png"),
-    "hobby": str(ARTIFACT_DIR / "memoir_nostalgia_1_1773714327864.png"),
-    "future": str(ARTIFACT_DIR / "memoir_nostalgia_2_1773714346454.png"),
+    "childhood": str(ASSETS_DIR / "childhood.png"),
+    "youth": str(ASSETS_DIR / "youth.png"),
+    "career": str(ASSETS_DIR / "career.png"),
+    "marriage": str(ASSETS_DIR / "marriage.png"),
+    "crisis": str(ASSETS_DIR / "crisis.png"),
+    "family": str(ASSETS_DIR / "family.png"),
+    "hobby": str(ASSETS_DIR / "hobby.png"),
+    "future": str(ASSETS_DIR / "future.png"),
 }
 
 class PdfService:

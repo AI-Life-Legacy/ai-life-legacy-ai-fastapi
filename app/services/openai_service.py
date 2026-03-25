@@ -7,6 +7,10 @@ import json
 client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
 
 async def classify_user_case(intro_text: str) -> str:
+    # 데이터가 너무 적을 경우(공백 포함 5자 미만) 디폴트 case1 반환
+    if not intro_text or len(intro_text.strip()) < 5:
+        return json.dumps({"case": "case1", "reasoning": "Input too short, defaulted to case1"})
+
     # 사용자 프롬프트에 데이터를 주입
     prompt_content = PROMPTS["CASE_CLASSIFICATION_USER"].format(user_intro_text=intro_text)
     
