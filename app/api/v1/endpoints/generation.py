@@ -40,6 +40,17 @@ async def create_autobiography(request: AutobiographyRequest):
         pdf_file_path = storage_path / pdf_filename
         pdf_service.generate_premium_pdf(md_content, str(pdf_file_path))
         
+        # 4. Save a copy to System's Downloads folder for convenience
+        try:
+            downloads_path = Path.home() / "Downloads"
+            if downloads_path.exists():
+                import shutil
+                system_pdf_path = downloads_path / pdf_filename
+                shutil.copy2(pdf_file_path, system_pdf_path)
+                print(f"PDF copy saved to Downloads: {system_pdf_path}")
+        except Exception as e:
+            print(f"Warning: Failed to copy PDF to Downloads folder: {e}")
+        
         return AutobiographyResponse(
             status="success",
             mdPath=str(md_file_path),
