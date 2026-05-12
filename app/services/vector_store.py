@@ -10,7 +10,7 @@ from starlette.concurrency import run_in_threadpool
 # 임베딩 모델 설정
 openai_ef = OpenAIEmbeddings(
     openai_api_key=settings.OPENAI_API_KEY,
-    model="text-embedding-3-small"
+    model=settings.OPENAI_EMBEDDING_MODEL
 )
 
 # 벡터 스토어 초기화

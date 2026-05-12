@@ -22,3 +22,8 @@ Thumbs.db
 storage/
 app/storage/
 storage/data/
+
+# Cache and PDF output
+.cache/
+generated_pdfs/
+

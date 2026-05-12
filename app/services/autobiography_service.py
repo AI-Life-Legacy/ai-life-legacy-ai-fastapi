@@ -88,16 +88,18 @@ class AutobiographyService:
             print(f"Detail extraction error: {e}")
             return {"people": [], "places": [], "activities": [], "achievements": [], "events": []}
 
-    async def generate_autobiography_memoir(self, user_id: str, user_name: str) -> str:
+    async def generate_autobiography_memoir(self, user_id: str, user_name: str, retrieved_context: str = None) -> str:
         """
         Timeline Graph와 Scene Composition을 거쳐 서사를 생성합니다.
         """
-        print(f"[{user_name}] 1. 전체 문맥 검색 중...")
-        # 1. 벡터 데이터베이스에서 전체 컨텍스트 검색
-        retrieved_context = await retrieve_all_user_contexts(user_id=user_id, limit=30)
+        if retrieved_context is None:
+            print(f"[{user_name}] 1. 전체 문맥 검색 중...")
+            # 1. 벡터 데이터베이스에서 전체 컨텍스트 검색
+            retrieved_context = await retrieve_all_user_contexts(user_id=user_id, limit=30)
         
         if not retrieved_context:
             return "검색된 사용자 데이터가 없습니다. 자서전을 생성할 수 없습니다."
+
 
         print(f"[{user_name}] 2. Personal Detail & Timeline 추출 중...")
         # 디테일 추출 (고유명사 증폭용)

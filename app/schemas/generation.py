@@ -12,8 +12,11 @@ class QuestionResponse(BaseModel):
 class AutobiographyRequest(BaseModel):
     userId: str
     userName: str = "사용자"
+    force: bool = False
 
 class AutobiographyResponse(BaseModel):
     status: str
     pdf_url: str
     page_count: int
+    cached: bool = False
+
