@@ -2,9 +2,9 @@ from pydantic import BaseModel
 from typing import List
 
 class QuestionRequest(BaseModel):
-    userId: str
-    originalQuestion: str
-    userAnswer: str
+    toc_id: int
+    current_answer: str
+    chat_history: List[dict]
 
 class QuestionResponse(BaseModel):
     question: str
@@ -15,5 +15,5 @@ class AutobiographyRequest(BaseModel):
 
 class AutobiographyResponse(BaseModel):
     status: str
-    mdPath: str
-    pdfPath: str
+    pdf_url: str
+    page_count: int

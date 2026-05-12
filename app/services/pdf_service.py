@@ -594,7 +594,12 @@ class PdfService:
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
         
         # Render PDF
-        HTML(string=rendered_html, base_url=".").write_pdf(target=output_path)
-        return output_path
+        pdf_doc = HTML(string=rendered_html, base_url=".")
+        pdf_doc.write_pdf(target=output_path)
+        
+        # Count pages (optional: we can get it from the rendered document)
+        page_count = len(pdf_doc.render().pages)
+        
+        return output_path, page_count
 
 pdf_service = PdfService()

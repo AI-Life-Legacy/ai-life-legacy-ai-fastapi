@@ -1,9 +1,16 @@
 from pydantic import BaseModel
 
 class ChatRequest(BaseModel):
-    userId: str
+    user_id: str
+    session_id: str
+    role_id: str
     message: str
-    role: str = "친한 친구"
 
 class ChatResponse(BaseModel):
-    response: str
+    answer: str
+    session_id: str
+    context_used: bool
+
+class VoiceChatRequest(BaseModel):
+    text: str
+    role_id: str
