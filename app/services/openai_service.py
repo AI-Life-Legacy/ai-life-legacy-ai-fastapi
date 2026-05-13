@@ -3,6 +3,8 @@ from app.core.config import settings
 from app.prompts.templates import PROMPTS
 from app.services.vector_store import search_context
 import json
+from typing import Optional
+
 
 client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
 
@@ -67,33 +69,95 @@ async def generate_follow_up_question(user_id: str, current_answer: str, chat_hi
     )
     return response.choices[0].message.content.strip()
 
-async def generate_avatar_response(user_id: str, user_message: str, role_id: str, session_id: str) -> dict:
-    # 1. RAG 검색
-    results = await search_context(user_id, user_message, n_results=3)
-    context_text = "\n".join([f"- {doc.page_content}" for doc, _ in results])
-    context_used = len(results) > 0
-    if not context_text:
-        context_text = "특별한 과거 기록이 없습니다."
-
-    # 2. 역할 설정 (간단한 매핑, 실제로는 프롬프트 템플릿 확장이 좋음)
-    role_names = {
-        "father": "아버지",
-        "mother": "어머니",
-        "curator": "큐레이터",
-        "friend": "친한 친구"
+def map_role_id(role_id: Optional[str], role: Optional[str]) -> str:
+    r_id = role_id.strip() if role_id else ""
+    r_name = role.strip() if role else ""
+    
+    mapping = {
+        "curator": "curator",
+        "큐레이터": "curator",
+        "father": "father",
+        "아버지": "father",
+        "mother": "mother",
+        "어머니": "mother",
+        "self": "self",
+        "self": "self",
+        "나": "self",
+        "sister": "sister",
+        "누나": "sister",
+        "언니": "sister",
+        "여동생": "sister",
+        "brother": "brother",
+        "형": "brother",
+        "오빠": "brother",
+        "남동생": "brother"
     }
-    role_name = role_names.get(role_id, "아버지")
+    
+    if r_id:
+        mapped = mapping.get(r_id.lower())
+        if mapped:
+            return mapped
+        if r_id.lower() in ["curator", "father", "mother", "self", "sister", "brother"]:
+            return r_id.lower()
+            
+    if r_name:
+        mapped = mapping.get(r_name.lower())
+        if mapped:
+            return mapped
+        if r_name.lower() in ["curator", "father", "mother", "self", "sister", "brother"]:
+            return r_name.lower()
+            
+    return "curator"
+
+async def generate_avatar_response(
+    user_id: Optional[str] = None,
+    user_message: str = "",
+    role_id: Optional[str] = None,
+    session_id: Optional[str] = None,
+    role: Optional[str] = None,
+    viewer_id: Optional[str] = None,
+    mode: str = "writer"
+) -> dict:
+    import uuid
+    
+    final_user_id = user_id or "anonymous"
+    final_role_id = map_role_id(role_id, role)
+    final_session_id = session_id or f"session_{uuid.uuid4().hex[:12]}"
+    
+    if viewer_id:
+        print(f"[Chat] Mode: {mode}, Author: {final_user_id}, Viewer: {viewer_id}, Session: {final_session_id}")
+    else:
+        print(f"[Chat] Mode: {mode}, Author: {final_user_id}, Session: {final_session_id}")
+    
+    # 1. RAG 검색
+    context_text = ""
+    context_used = False
+    
+    try:
+        # anonymous, unknown 또는 비어있는 user_id는 RAG 검색을 건너뜀
+        if final_user_id not in [None, "", "anonymous", "unknown"]:
+            results = await search_context(final_user_id, user_message, n_results=3)
+            if results:
+                context_chunks = [f"- {doc.page_content}" for doc, _ in results if doc and doc.page_content]
+                context_text = "\n".join(context_chunks)
+                context_used = len(context_text.strip()) > 0
+    except Exception as e:
+        print(f"Warning: Failed to retrieve RAG context for user {final_user_id}: {e}")
+        context_text = ""
+        context_used = False
+
+    if not context_text:
+        context_text = "제공된 과거 기억이나 자서전 기록이 없습니다. 일상적인 대화 어조로 성심껏 응답하세요."
+
+    # 2. 역할 설정 및 페르소나 선택
+    prompt_key = f"AVATAR_SYSTEM_{final_role_id.upper()}"
+    system_prompt = PROMPTS.get(prompt_key, PROMPTS["AVATAR_SYSTEM_CURATOR"])
 
     # 3. 프롬프트 구성
-    # AVATAR_CHAT_PROMPT를 조금 더 유연하게 수정하여 사용
-    system_prompt = f"당신은 {role_name}입니다. 제공된 과거 기억만을 바탕으로 대화하세요. 지어내지 마세요."
-    
-    prompt_content = PROMPTS["AVATAR_CHAT_PROMPT"].format(
+    prompt_content = PROMPTS["AVATAR_USER_PROMPT"].format(
         context=context_text,
         user_message=user_message
     )
-    # 실제 구현에서는 session_id를 사용하여 이전 대화 내역을 가져오는 로직이 필요하지만,
-    # 여기서는 간단하게 시스템 프롬프트와 현재 메시지만 처리합니다.
     
     response = await client.chat.completions.create(
         model="gpt-4o-mini",
@@ -107,7 +171,8 @@ async def generate_avatar_response(user_id: str, user_message: str, role_id: str
     
     return {
         "answer": answer,
-        "session_id": session_id,
+        "session_id": final_session_id,
+        "role_id": final_role_id,
         "context_used": context_used
     }
 
