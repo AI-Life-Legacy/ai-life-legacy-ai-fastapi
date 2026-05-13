@@ -1,4 +1,5 @@
 from fastapi import APIRouter, HTTPException
+from typing import List, Dict, Any, Optional
 from app.schemas.generation import (
     QuestionRequest, QuestionResponse, 
     AutobiographyRequest, AutobiographyResponse
@@ -27,28 +28,87 @@ async def create_follow_up_question(request: QuestionRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+def extract_context_from_answers(answers: List[Any]) -> str:
+    extracted_texts = []
+    for item in answers:
+        if isinstance(item, str):
+            extracted_texts.append(item)
+        elif isinstance(item, dict):
+            q_text = item.get("question_text") or item.get("questionText") or item.get("question")
+            if isinstance(q_text, dict):
+                q_text = q_text.get("question_text") or q_text.get("questionText") or q_text.get("title") or ""
+            
+            a_text = item.get("answer_text") or item.get("answerText") or item.get("text") or item.get("content") or item.get("answer") or ""
+            
+            if q_text and a_text:
+                extracted_texts.append(f"Q: {q_text}\nA: {a_text}")
+            elif a_text:
+                extracted_texts.append(a_text)
+            else:
+                val_str = " ".join([str(v) for k, v in item.items() if isinstance(v, str)])
+                if val_str:
+                    extracted_texts.append(val_str)
+        else:
+            extracted_texts.append(str(item))
+            
+    return "\n\n".join(extracted_texts)
+
 @router.post("/autobiography", response_model=AutobiographyResponse)
 async def create_autobiography(request: AutobiographyRequest):
     try:
-        # 1. Retrieve all user contexts from Vector DB
-        retrieved_context = await retrieve_all_user_contexts(user_id=request.userId, limit=30)
+        user_id = request.user_id or request.userId
+        user_name = request.user_name or request.userName or "사용자"
         
-        # 2. Generate content hash based on retrieved context (core input data)
-        content_hash = hashlib.sha256(retrieved_context.encode("utf-8")).hexdigest()
+        if not user_id:
+            raise HTTPException(status_code=400, detail="userId or user_id is required.")
+            
+        # Convert chapters to answers if present
+        if request.chapters and not request.answers:
+            flat_answers = []
+            for ch in request.chapters:
+                toc_id = ch.get("toc_id") or ch.get("tocId")
+                questions = ch.get("questions") or []
+                for q in questions:
+                    flat_answers.append({
+                        "toc_id": toc_id,
+                        "question_id": q.get("question_id") or q.get("questionId"),
+                        "question": q.get("question") or q.get("questionText") or q.get("question_text"),
+                        "answer": q.get("answer") or q.get("answerText") or q.get("answer_text")
+                    })
+            request.answers = flat_answers
+
+        if not request.answers:
+            raise HTTPException(
+                status_code=400,
+                detail="사용자 답변 데이터(answers)가 없거나 비어 있습니다. 자서전을 생성할 수 없습니다."
+            )
+            
+        # 1. Generate Content Hash based on request answers
+        serialized_answers = json.dumps(request.answers, sort_keys=True, ensure_ascii=False)
+        content_hash = hashlib.sha256(serialized_answers.encode("utf-8")).hexdigest()
         
         cache_dir = Path(BASE_DIR) / ".cache" / "autobiography"
         cache_file = cache_dir / f"{content_hash}.json"
         
-        pdf_filename = f"autobiography_{request.userId}_{content_hash}.pdf"
+        pdf_filename = f"autobiography_{user_id}_{content_hash}.pdf"
         pdf_file_path = Path(BASE_DIR) / "generated_pdfs" / pdf_filename
         
-        # 3. Check Cache
+        # 2. Check Cache
         if not request.force and cache_file.exists() and pdf_file_path.exists():
             try:
                 with open(cache_file, "r", encoding="utf-8") as f:
                     cache_data = json.load(f)
                 
-                print(f"[CACHE HIT] Returning cached autobiography for user {request.userId} (hash: {content_hash})")
+                # 로그 출력 요구사항:
+                # - request answers count
+                # - content_hash
+                # - cache hit/miss
+                # - output pdf path
+                print(f"[LOG] request answers count: {len(request.answers)}")
+                print(f"[LOG] content_hash: {content_hash}")
+                print(f"[LOG] cache hit/miss: cache hit")
+                print(f"[LOG] output pdf path: {pdf_file_path}")
+                
                 return AutobiographyResponse(
                     status="COMPLETED",
                     pdf_url=cache_data["pdf_url"],
@@ -58,23 +118,32 @@ async def create_autobiography(request: AutobiographyRequest):
             except Exception as ce:
                 print(f"Warning: Failed to read cache: {ce}. Proceeding to regenerate.")
         
-        print(f"[CACHE MISS] Generating new autobiography for user {request.userId} (hash: {content_hash})")
+        # 로그 출력 요구사항 (cache miss)
+        print(f"[LOG] request answers count: {len(request.answers)}")
+        print(f"[LOG] content_hash: {content_hash}")
+        print(f"[LOG] cache hit/miss: cache miss")
         
-        # 4. Generate Markdown content using RAG service (pass retrieved_context)
+        # 3. Extract context from request answers
+        retrieved_context = extract_context_from_answers(request.answers)
+        
+        # 4. Generate Markdown content using request answers
         md_content = await autobiography_service.generate_autobiography_memoir(
-            request.userId, request.userName, retrieved_context=retrieved_context
+            user_id, user_name, retrieved_context=retrieved_context, answers=request.answers
         )
         
         # 5. Save MarkDown to storage
         storage_path = Path(BASE_DIR) / "storage" / "data"
         os.makedirs(storage_path, exist_ok=True)
-        md_filename = f"autobiography_{request.userId}_{content_hash}.md"
+        md_filename = f"autobiography_{user_id}_{content_hash}.md"
         md_file_path = storage_path / md_filename
         with open(md_file_path, "w", encoding="utf-8") as f:
             f.write(md_content)
             
         # 6. Generate PDF from MarkDown in generated_pdfs
         _, page_count = pdf_service.generate_premium_pdf(md_content, str(pdf_file_path))
+        
+        # 로그 출력 요구사항 (pdf path)
+        print(f"[LOG] output pdf path: {pdf_file_path}")
         
         # 7. Save a copy to System's Downloads folder for convenience
         try:

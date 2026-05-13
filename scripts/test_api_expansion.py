@@ -44,10 +44,23 @@ def test_question():
     print(f"Response: {json.dumps(response.json(), indent=2, ensure_ascii=False)}")
 
 def test_autobiography():
-    print("\n--- Testing POST /autobiography ---")
+    print("\n--- Testing POST /autobiography with request answers ---")
     payload = {
-        "userId": "test_user_123",
-        "userName": "홍길동"
+        "user_id": "test_user_123",
+        "userName": "홍길동",
+        "answers": [
+            {
+                "toc_id": 1,
+                "question_text": "어린 시절 가장 기억에 남는 추억은 무엇인가요?",
+                "answer_text": "어린 시절 저는 부모님과 함께 매주 일요일마다 동네 뒷산에 올랐습니다. 그때 'ABC123TEST'라는 특별한 표지판을 보았던 기억이 아주 생생하게 납니다."
+            },
+            {
+                "toc_id": 2,
+                "question_text": "학창 시절에 대해 들려주세요.",
+                "answer_text": "학창 시절에는 철수와 바다로 여행을 갔던 기억이 납니다."
+            }
+        ],
+        "force": False
     }
     response = requests.post(f"{BASE_URL}/generation/autobiography", json=payload)
     print(f"Status: {response.status_code}")

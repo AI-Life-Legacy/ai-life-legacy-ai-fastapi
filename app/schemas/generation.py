@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import List
+from typing import List, Dict, Any, Optional
 
 class QuestionRequest(BaseModel):
     toc_id: int
@@ -10,8 +10,14 @@ class QuestionResponse(BaseModel):
     question: str
 
 class AutobiographyRequest(BaseModel):
-    userId: str
-    userName: str = "사용자"
+    userId: Optional[str] = None
+    user_id: Optional[str] = None
+    userName: Optional[str] = "사용자"
+    user_name: Optional[str] = None
+    answers: Optional[List[Any]] = None
+    chapters: Optional[List[Any]] = None
+    toc: Optional[List[Any]] = None
+    questions: Optional[List[Any]] = None
     force: bool = False
 
 class AutobiographyResponse(BaseModel):
@@ -19,4 +25,5 @@ class AutobiographyResponse(BaseModel):
     pdf_url: str
     page_count: int
     cached: bool = False
+
 

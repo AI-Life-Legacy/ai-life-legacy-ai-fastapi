@@ -57,6 +57,82 @@ CHAPTER_ROLES = {
     }
 }
 
+def group_answers_by_chapter(answers: list) -> dict:
+    grouped = {
+        "childhood": [],
+        "school": [],
+        "youth": [],
+        "marriage": [],
+        "career": [],
+        "hobby": [],
+        "self_reflection": [],
+        "family": []
+    }
+    
+    # 챕터 감지를 위한 간단한 키워드 맵 (질문이나 답변에 이 단어가 들어있으면 해당 챕터로 분류)
+    keyword_map = {
+        "childhood": ["유년", "어린 시절", "태어난", "고향", "부모님", "아버지", "어머니", "형제", "자매"],
+        "school": ["학교", "학창", "선생님", "친구", "소풍", "공부", "사춘기", "중학교", "고등학교", "초등학교"],
+        "youth": ["대학", "20대", "청년", "첫 직장", "군대", "진로", "전공", "취업"],
+        "marriage": ["결혼", "배우자", "남편", "아내", "연애", "신혼", "첫째", "출산", "아이들", "자식"],
+        "career": ["직장", "회사", "업무", "성취", "도전", "실패", "퇴사", "승진", "동료", "상사", "사업"],
+        "hobby": ["취미", "여가", "주말", "운동", "그림", "음악", "여행", "휴식", "좋아하는"],
+        "self_reflection": ["건강", "나이", "깨달음", "가치관", "인생", "태도", "후회", "보람", "성찰"],
+        "family": ["미래", "계획", "자녀", "손주", "가족", "남기고", "다짐", "꿈", "철학"]
+    }
+    
+    for item in answers:
+        item_text = ""
+        item_chapter = None
+        
+        if isinstance(item, dict):
+            # toc_id 등을 통한 매칭 (1 -> childhood, 2 -> school 등)
+            toc_id = item.get("toc_id") or item.get("tocId")
+            if toc_id is not None:
+                toc_id_map = {
+                    1: "childhood",
+                    2: "school",
+                    3: "youth",
+                    4: "marriage",
+                    5: "career",
+                    6: "hobby",
+                    7: "self_reflection",
+                    8: "family"
+                }
+                item_chapter = toc_id_map.get(int(toc_id))
+            
+            if not item_chapter:
+                item_chapter = item.get("chapter_type") or item.get("chapterType")
+                
+            q_text = item.get("question_text") or item.get("questionText") or item.get("question") or ""
+            if isinstance(q_text, dict):
+                q_text = q_text.get("question_text") or q_text.get("questionText") or q_text.get("title") or ""
+            a_text = item.get("answer_text") or item.get("answerText") or item.get("text") or item.get("content") or item.get("answer") or ""
+            
+            if q_text and a_text:
+                item_text = f"Q: {q_text}\nA: {a_text}"
+            else:
+                item_text = a_text or str(item)
+        else:
+            item_text = str(item)
+            
+        if not item_chapter:
+            detected_scores = {k: 0 for k in keyword_map.keys()}
+            for ch_type, kw_list in keyword_map.items():
+                for kw in kw_list:
+                    if kw in item_text:
+                        detected_scores[ch_type] += 1
+            best_ch = max(detected_scores, key=detected_scores.get)
+            if detected_scores[best_ch] > 0:
+                item_chapter = best_ch
+            else:
+                item_chapter = "family" # Fallback
+                
+        if item_chapter in grouped:
+            grouped[item_chapter].append(item_text)
+            
+    return grouped
+
 class AutobiographyService:
     def __init__(self):
         self.client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
@@ -88,14 +164,20 @@ class AutobiographyService:
             print(f"Detail extraction error: {e}")
             return {"people": [], "places": [], "activities": [], "achievements": [], "events": []}
 
-    async def generate_autobiography_memoir(self, user_id: str, user_name: str, retrieved_context: str = None) -> str:
+    async def generate_autobiography_memoir(self, user_id: str, user_name: str, retrieved_context: str = None, answers: list = None) -> str:
         """
         Timeline Graph와 Scene Composition을 거쳐 서사를 생성합니다.
         """
         if retrieved_context is None:
             print(f"[{user_name}] 1. 전체 문맥 검색 중...")
             # 1. 벡터 데이터베이스에서 전체 컨텍스트 검색
-            retrieved_context = await retrieve_all_user_contexts(user_id=user_id, limit=30)
+            if answers:
+                # Circular import 방지를 위해 헬퍼 코드를 인라인 임포트하거나 직접 구현 가능
+                # 여기서는 answers가 있는 경우 retrieved_context가 이미 바깥에서 제공되므로 실행되지 않겠지만, Fallback으로 안전하게 방어
+                from app.api.v1.endpoints.generation import extract_context_from_answers
+                retrieved_context = extract_context_from_answers(answers)
+            else:
+                retrieved_context = await retrieve_all_user_contexts(user_id=user_id, limit=30)
         
         if not retrieved_context:
             return "검색된 사용자 데이터가 없습니다. 자서전을 생성할 수 없습니다."
@@ -115,11 +197,20 @@ class AutobiographyService:
         # 각 챕터별로 본문 생성
         full_markdown = f"제목: {user_name}의 자서전\n\n"
         
+        grouped_answers = group_answers_by_chapter(answers) if answers else {}
+        
         for i, chapter in enumerate(chapter_data_list):
             next_chapter = chapter_data_list[i+1] if i + 1 < len(chapter_data_list) else None
             print(f"[{user_name}] 4. 챕터 생성 중: {chapter.chapter_num}. {chapter.chapter_title}")
+            
             # 이 챕터에 대한 추가적인 상세 Context 검색
-            chapter_context = await retrieve_chapter_contexts(user_id, chapter.chapter_type, limit=10)
+            if answers:
+                chapter_context = "\n\n".join(grouped_answers.get(chapter.chapter_type, []))
+                # 해당 챕터에 질문이 없는 경우 전체 컨텍스트를 기본 뼈대로 사용
+                if not chapter_context:
+                    chapter_context = retrieved_context
+            else:
+                chapter_context = await retrieve_chapter_contexts(user_id, chapter.chapter_type, limit=10)
             
             # Post-check 용이성을 위해 Retry 로직 래핑 가능 (현재는 단일 패스)
             chapter_result = await self._generate_chapter_text(user_name, chapter, next_chapter, chapter_context, personal_details)
