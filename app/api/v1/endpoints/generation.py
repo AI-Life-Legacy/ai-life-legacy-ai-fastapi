@@ -20,9 +20,8 @@ router = APIRouter()
 @router.post("/question", response_model=QuestionResponse)
 async def create_follow_up_question(request: QuestionRequest):
     try:
-        # 1. RAG 및 과거 내역을 활용한 꼬리 질문 생성 (user_id는 임시로 고정하거나 로직에서 처리)
-        # 실제로는 toc_id나 다른 정보를 통해 user_id를 가져와야 할 수도 있습니다.
-        user_id = "test_user" 
+        # 1. RAG 및 과거 내역을 활용한 꼬리 질문 생성 (user_id 로직 처리)
+        user_id = request.user_id or "unknown"
         question_text = await generate_follow_up_question(user_id, request.current_answer, request.chat_history)
         return QuestionResponse(question=question_text)
     except Exception as e:

@@ -2,6 +2,7 @@ from pydantic import BaseModel
 from typing import List, Dict, Any, Optional
 
 class QuestionRequest(BaseModel):
+    user_id: Optional[str] = None
     toc_id: int
     current_answer: str
     chat_history: List[dict]
