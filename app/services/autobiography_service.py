@@ -151,7 +151,7 @@ class AutobiographyService:
 """
         try:
             response = await self.client.chat.completions.create(
-                model="gpt-4o-mini",
+                model=settings.OPENAI_EXTRACT_MODEL,
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": context}
@@ -291,7 +291,7 @@ class AutobiographyService:
 
         try:
             response = await self.client.chat.completions.create(
-                model="gpt-4o",
+                model=settings.OPENAI_AUTOBIOGRAPHY_MODEL,
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}

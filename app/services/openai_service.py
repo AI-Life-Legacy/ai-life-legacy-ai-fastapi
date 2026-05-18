@@ -1,7 +1,7 @@
 from openai import AsyncOpenAI
 from app.core.config import settings
 from app.prompts.templates import PROMPTS
-from app.services.vector_store import search_context
+from app.services.vector_store import search_context, retrieve_full_user_memory
 import json
 from typing import Optional
 
@@ -17,7 +17,7 @@ async def classify_user_case(intro_text: str) -> str:
     prompt_content = PROMPTS["CASE_CLASSIFICATION_USER"].format(user_intro_text=intro_text)
     
     response = await client.chat.completions.create(
-        model="gpt-4o-mini",
+        model=settings.OPENAI_EXTRACT_MODEL,
         messages=[
             {"role": "user", "content": prompt_content}
         ],
@@ -61,7 +61,7 @@ async def generate_follow_up_question(user_id: str, current_answer: str, chat_hi
     """
 
     response = await client.chat.completions.create(
-        model="gpt-4o-mini",
+        model=settings.OPENAI_QUESTION_MODEL,
         messages=[
             {"role": "user", "content": prompt_content}
         ],
@@ -129,18 +129,16 @@ async def generate_avatar_response(
     else:
         print(f"[Chat] Mode: {mode}, Author: {final_user_id}, Session: {final_session_id}")
     
-    # 1. RAG 검색
+    # 1. 유저의 전체 자서전 기억 로드 (Long-Context Full Memory 방식)
     context_text = ""
     context_used = False
     
     try:
         # anonymous, unknown 또는 비어있는 user_id는 RAG 검색을 건너뜀
         if final_user_id not in [None, "", "anonymous", "unknown"]:
-            results = await search_context(final_user_id, user_message, n_results=3)
-            if results:
-                context_chunks = [f"- {doc.page_content}" for doc, _ in results if doc and doc.page_content]
-                context_text = "\n".join(context_chunks)
-                context_used = len(context_text.strip()) > 0
+            # 유저의 전체 자서전 데이터를 통째로 로드하여 LLM의 Context Window에 주입
+            context_text = await retrieve_full_user_memory(final_user_id)
+            context_used = len(context_text.strip()) > 0
     except Exception as e:
         print(f"Warning: Failed to retrieve RAG context for user {final_user_id}: {e}")
         context_text = ""
@@ -160,7 +158,7 @@ async def generate_avatar_response(
     )
     
     response = await client.chat.completions.create(
-        model="gpt-4o-mini",
+        model=settings.OPENAI_CHAT_MODEL,
         messages=[
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": prompt_content}

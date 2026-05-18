@@ -10,7 +10,7 @@ api_router.include_router(classification.router, tags=["classification"])
 api_router.include_router(generation.router, prefix="/generation", tags=["generation"])
 
 # 검색 증강 생성 (RAG)
-api_router.include_router(rag.router, tags=["rag"])
+api_router.include_router(rag.router, prefix="/rag", tags=["rag"])
 
 # 아바타 채팅 (Avatar Chat)
 api_router.include_router(chat.router, prefix="/chat", tags=["chat"])

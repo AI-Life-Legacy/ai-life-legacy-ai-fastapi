@@ -10,6 +10,10 @@ class Settings(BaseSettings):
     OPENAI_PROJECT_ID: str | None = None  # 참고용
     OPENAI_SERVICE_ACCOUNT_ID: str | None = None  # 참고용
     OPENAI_EMBEDDING_MODEL: str = "text-embedding-3-small"
+    OPENAI_CHAT_MODEL: str = "gpt-4.1-mini"
+    OPENAI_QUESTION_MODEL: str = "gpt-4.1-mini"
+    OPENAI_EXTRACT_MODEL: str = "gpt-4.1-mini"
+    OPENAI_AUTOBIOGRAPHY_MODEL: str = "gpt-4o"
     OPENAI_ORG_ID: str | None = None
     PORT: int = 8000
     ENVIRONMENT: str = "development"
