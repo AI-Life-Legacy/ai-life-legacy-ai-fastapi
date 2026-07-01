@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+﻿from pydantic import BaseModel
 from typing import List, Dict, Any, Optional
 
 class QuestionRequest(BaseModel):
@@ -19,12 +19,17 @@ class AutobiographyRequest(BaseModel):
     chapters: Optional[List[Any]] = None
     toc: Optional[List[Any]] = None
     questions: Optional[List[Any]] = None
+    personalization: Optional[Dict[str, Any]] = None
     force: bool = False
+    theme: Optional[str] = "classic"
+    generate_illustrations: bool = False
 
 class AutobiographyResponse(BaseModel):
     status: str
     pdf_url: str
     page_count: int
     cached: bool = False
+    markdown: Optional[str] = None
+    markdown_url: Optional[str] = None
 
 

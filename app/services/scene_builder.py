@@ -139,25 +139,103 @@ class SceneBuilder:
             print(f"Error building scenes for {chapter_type}: {e}")
             return []
 
+    async def generate_dynamic_chapters_outline(self, events: List[LifeEvent]) -> List[dict]:
+        """
+        사용자의 생애 이벤트들을 기반으로 AI가 맞춤형 목차(TOC)를 동적으로 디자인합니다.
+        """
+        if not events:
+            return []
+            
+        events_json = [ev.model_dump() for ev in events]
+        
+        system_prompt = """당신은 소설이나 자서전의 목차를 구상하는 베테랑 출판 기획자입니다.
+제공된 인물의 실제 생애 사건 리스트(LifeEvent)를 상세히 분석하여, 이 사람의 생애 특징을 관통하는 최적의 맞춤형 목차(TOC) 아웃라인을 구상해 주세요.
+
+[목차 구상 원칙]
+1. 획일적인 8단 구성에서 벗어나, 사건들의 밀도와 고유한 스토리(예: 군대 생활이 길었거나, 창업 도전기, 혹은 특정 취미/여행에 대한 이야기 등)를 파악해 최소 3개에서 최대 6개 사이의 맞춤형 챕터로 구성하세요.
+2. 만약 특정 시기(예: 유년시절)의 기억이 너무 적다면 청소년기와 합쳐서 한 장으로 묶거나 과감히 생략하고, 사건이 많은 시기는 세분화하십시오.
+3. 각 챕터의 제목(chapter_title)은 단순 명사가 아닌 소설처럼 감성적이고 깊이 있게 지어주세요 (예: '군산 바다의 짠내와 따뜻했던 품').
+4. 각 챕터에는 다음 필드를 포함해 주세요:
+   - chapter_num: 1부터 시작하는 순차 정수
+   - chapter_title: 챕터의 제목
+   - chapter_type: childhood, school, youth, career, marriage, hobby, self_reflection, family 중 가장 정서가 어울리는 기존 무드 코드 1개 선택 (CSS 스타일링 매핑용)
+   - description: 챕터가 다룰 주요 인생 여정 묘사
+   - mood: 정서 톤 (chapter_type과 동일한 값 권장)
+   - event_ids: 이 챕터에 포함할 LifeEvent의 id들의 리스트
+5. 제공된 모든 LifeEvent ID가 최소 한 번은 챕터의 'event_ids'에 빠짐없이 매핑되어야 합니다. 누락되는 인생 기억이 없도록 하십시오.
+6. JSON 형식의 'chapters' 배열로 반환하세요.
+"""
+        user_prompt = f"""[추출된 사용자 인생 사건 (LifeEvents)]
+{json.dumps(events_json, ensure_ascii=False, indent=2)}
+
+위 사건들을 바탕으로 이 유저만을 위한 맞춤형 목차 아웃라인을 생성해 주세요.
+"""
+        try:
+            response = await self.client.chat.completions.create(
+                model=settings.OPENAI_AUTOBIOGRAPHY_MODEL,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
+                ],
+                temperature=0.3,
+                response_format={ "type": "json_object" }
+            )
+            data = json.loads(response.choices[0].message.content)
+            return data.get("chapters", [])
+        except Exception as e:
+            print(f"Error generating dynamic chapters outline: {e}")
+            return []
+
     async def build_full_story_structure(self, events: List[LifeEvent]) -> List[ChapterData]:
-        chapter_buckets = self._assign_events_to_chapters(events)
+        # 1. AI를 통한 동적 목차 생성 시도
+        dynamic_outline = await self.generate_dynamic_chapters_outline(events)
         
         full_chapters = []
-        for ch_outline in self.chapters_outline:
-            ch_type = ch_outline["chapter_type"]
-            ch_events = chapter_buckets.get(ch_type, [])
-            
-            # 씬 구축
-            scenes = await self.build_scenes_for_chapter(ch_type, ch_events)
-            
-            full_chapters.append(ChapterData(
-                chapter_num=ch_outline["chapter_num"],
-                chapter_title=ch_outline["title_hint"],
-                chapter_type=ch_type,
-                mood=ch_type, # 기본적으로 chapter_type을 mood로 사용. 추후 임베딩 기반 개선 가능
-                scenes=scenes
-            ))
-            
+        
+        if dynamic_outline:
+            print(f"[Dynamic TOC] Successfully generated {len(dynamic_outline)} custom chapters.")
+            for ch in dynamic_outline:
+                ch_num = ch["chapter_num"]
+                ch_title = ch["chapter_title"]
+                ch_type = ch.get("chapter_type", "family")
+                ch_mood = ch.get("mood", ch_type)
+                event_ids = ch.get("event_ids", [])
+                
+                # 챕터에 할당된 LifeEvent들 추출
+                ch_events = [ev for ev in events if ev.id in event_ids]
+                
+                # 해당 챕터에 할당된 이벤트가 없는 경우, 방어 코드로 폴백 적용
+                if not ch_events and events:
+                    ch_events = [events[0]]
+                
+                # 씬 구축
+                scenes = await self.build_scenes_for_chapter(ch_type, ch_events)
+                
+                full_chapters.append(ChapterData(
+                    chapter_num=ch_num,
+                    chapter_title=ch_title,
+                    chapter_type=ch_type,
+                    mood=ch_mood,
+                    scenes=scenes
+                ))
+        else:
+            # 2. 실패 시 정적 백업 목차 사용
+            print("[Dynamic TOC] Falling back to static chapters outline.")
+            chapter_buckets = self._assign_events_to_chapters(events)
+            for ch_outline in self.chapters_outline:
+                ch_type = ch_outline["chapter_type"]
+                ch_events = chapter_buckets.get(ch_type, [])
+                
+                scenes = await self.build_scenes_for_chapter(ch_type, ch_events)
+                
+                full_chapters.append(ChapterData(
+                    chapter_num=ch_outline["chapter_num"],
+                    chapter_title=ch_outline["title_hint"],
+                    chapter_type=ch_type,
+                    mood=ch_type,
+                    scenes=scenes
+                ))
+                
         return full_chapters
 
 scene_builder = SceneBuilder()

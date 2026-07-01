@@ -1,18 +1,17 @@
-import re
 import os
+import re
 from pathlib import Path
-from jinja2 import Template
-from weasyprint import HTML, CSS
-from PIL import Image, ImageStat
-from app.core.config import settings
 
-# Project root setup (using settings if available)
+from app.core.config import settings
+from jinja2 import Template
+from PIL import Image, ImageDraw, ImageStat
+from weasyprint import HTML
+
+
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-# Default Asset Dir (Try local 'assets' folder in project root)
 ASSETS_DIR = Path(settings.CHROMA_DB_PATH).parent / "assets"
 os.makedirs(ASSETS_DIR, exist_ok=True)
 
-# Thematic assets (assigned by mood)
 MOOD_ASSETS = {
     "childhood": str(ASSETS_DIR / "childhood.png"),
     "youth": str(ASSETS_DIR / "youth.png"),
@@ -24,582 +23,481 @@ MOOD_ASSETS = {
     "future": str(ASSETS_DIR / "future.png"),
 }
 
-class PdfService:
-    def detect_mood(self, title, content):
-        content = title + " " + content
-        if any(k in content for k in ["유년", "어린 시절", "태어난", "고향", "부모님"]): return "childhood"
-        if any(k in content for k in ["학창", "청소년", "도시", "사춘기", "대학"]): return "youth"
-        if any(k in content for k in ["졸업", "사회", "회사", "업무", "성취", "도전"]): return "career"
-        if any(k in content for k in ["결혼", "동반자", "아내", "여행", "제주도"]): return "marriage"
-        if any(k in content for k in ["위기", "힘들었", "야근", "구조조정", "실직"]): return "crisis"
-        if any(k in content for k in ["현재", "아이들", "가족", "식사", "보람"]): return "family"
-        if any(k in content for k in ["취미", "그림", "운동", "요리", "건강"]): return "hobby"
-        if any(k in content for k in ["미래", "계획", "봉사", "철학", "나에게"]): return "future"
-        return "family"
 
-    def get_image_luminance(self, image_path: str):
-        """Calculates the average luminance (brightness) of an image."""
+class PdfService:
+    DEFAULT_ASSET_COLORS = {
+        "childhood": ("#f8d7a4", "#6b8f71", "#fef6e4"),
+        "youth": ("#b7d9f7", "#456990", "#f4fbff"),
+        "career": ("#d9e2ec", "#334e68", "#f8fafc"),
+        "marriage": ("#ffd6dc", "#9f5f80", "#fff5f7"),
+        "crisis": ("#cbd5e1", "#475569", "#f1f5f9"),
+        "family": ("#f7c59f", "#7f5539", "#fff8f1"),
+        "hobby": ("#c8e6c9", "#3d7a45", "#f4fff5"),
+        "future": ("#d8ccff", "#5b4b8a", "#faf7ff"),
+    }
+
+    THEME_STYLES = {
+        "classic": {
+            "font_family": "'Malgun Gothic', 'Noto Sans KR', serif",
+            "bg_color": "#fbfaf7",
+            "text_color": "#24211f",
+            "muted_color": "#7b7169",
+            "accent_color": "#8b1a1a",
+            "card_bg": "#ffffff",
+        },
+        "modern": {
+            "font_family": "'Malgun Gothic', 'Noto Sans KR', sans-serif",
+            "bg_color": "#f8fafc",
+            "text_color": "#172033",
+            "muted_color": "#64748b",
+            "accent_color": "#0d9488",
+            "card_bg": "#ffffff",
+        },
+        "warm": {
+            "font_family": "'Malgun Gothic', 'Noto Sans KR', serif",
+            "bg_color": "#fff8f1",
+            "text_color": "#35261f",
+            "muted_color": "#8a6d5c",
+            "accent_color": "#9a5a2f",
+            "card_bg": "#fffdf9",
+        },
+    }
+
+    def ensure_default_assets(self):
+        for mood, path in MOOD_ASSETS.items():
+            image_path = Path(path)
+            if image_path.exists():
+                continue
+
+            bg, accent, light = self.DEFAULT_ASSET_COLORS.get(mood, self.DEFAULT_ASSET_COLORS["family"])
+            img = Image.new("RGB", (1400, 1000), bg)
+            draw = ImageDraw.Draw(img, "RGBA")
+            draw.rectangle((0, 0, 1400, 1000), fill=bg)
+            draw.ellipse((-180, -120, 560, 620), fill=f"{light}CC")
+            draw.ellipse((760, 260, 1580, 1180), fill=f"{accent}55")
+            draw.polygon([(0, 1000), (1400, 760), (1400, 1000)], fill=f"{accent}66")
+            draw.line((90, 820, 1260, 620), fill=f"{accent}AA", width=10)
+            draw.line((120, 870, 980, 700), fill="#ffffff88", width=5)
+            image_path.parent.mkdir(parents=True, exist_ok=True)
+            img.save(image_path)
+
+    def to_file_uri(self, image_path: str) -> str:
+        if not image_path:
+            return ""
+        if image_path.startswith("file:///"):
+            return image_path
+        return Path(image_path).resolve().as_uri()
+
+    def file_uri_to_path(self, image_uri: str) -> Path:
+        if image_uri.startswith("file:///"):
+            return Path(image_uri.replace("file:///", ""))
+        return Path(image_uri)
+
+    def image_exists(self, image_uri: str) -> bool:
         try:
-            # Resolve path safely (handle file:/// prefix)
-            clean_path = image_path.replace("file:///", "")
-            local_path = clean_path.replace("/", os.sep)
-            
-            # Check if the file actually exists
-            if not os.path.exists(local_path):
-                return 128 # Middle fallback
-            
-            img = Image.open(local_path).convert('L')
-            stat = ImageStat.Stat(img)
-            return stat.mean[0] # Average brightness (0-255)
-        except Exception as e:
-            print(f"Warning: Luminance analysis failed for {image_path}: {e}")
+            return self.file_uri_to_path(image_uri).exists()
+        except Exception:
+            return False
+
+    def get_image_luminance(self, image_uri: str) -> float:
+        try:
+            path = self.file_uri_to_path(image_uri)
+            if not path.exists():
+                return 128
+            img = Image.open(path).convert("L")
+            return ImageStat.Stat(img).mean[0]
+        except Exception as exc:
+            print(f"Warning: Luminance analysis failed for {image_uri}: {exc}")
             return 128
 
-    def get_title_size(self, title: str):
-        """Returns a CSS font-size based on the title length."""
+    def detect_mood(self, title: str, content: str) -> str:
+        text = f"{title} {content}"
+        mood_keywords = {
+            "childhood": ["어린", "유년", "고향", "부모", "성장", "태어난"],
+            "youth": ["학교", "친구", "청춘", "대학", "학생", "진로"],
+            "career": ["직장", "회사", "일", "업무", "성취", "실패"],
+            "marriage": ["결혼", "배우자", "가족", "아이", "자녀"],
+            "crisis": ["위기", "힘들", "고비", "상처", "변화"],
+            "hobby": ["취미", "여행", "운동", "그림", "음악"],
+            "future": ["앞으로", "미래", "계획", "꿈", "후손"],
+        }
+        for mood, keywords in mood_keywords.items():
+            if any(keyword in text for keyword in keywords):
+                return mood
+        return "family"
+
+    def get_title_size(self, title: str) -> str:
         length = len(title)
-        if length < 12: return "42pt"
-        if length < 20: return "34pt"
-        if length < 30: return "28pt"
-        return "24pt"
+        if length < 12:
+            return "36pt"
+        if length < 20:
+            return "30pt"
+        if length < 30:
+            return "25pt"
+        return "21pt"
 
     def estimate_lines(self, text: str) -> int:
-        """
-        글자 수와 기본 폭을 기반으로 텍스트가 차지할 줄 수를 추정합니다.
-        1줄 = 약 38글자 기준
-        """
-        length = len(text)
-        return max(1, length // 38) + 1
+        return max(1, len(text) // 42) + 1
 
     def parse_markdown_content(self, content: str):
-        # Title extraction
-        title_match = re.search(r"^제목:\s*(.*)$", content, re.MULTILINE)
+        title_match = re.search(r"^(?:제목|Title)\s*:\s*(.*)$", content, re.MULTILINE)
         title = title_match.group(1).strip() if title_match else "자서전"
-
-        # Chapter extraction
-        chapters = []
         sections = re.split(r"^##\s+", content, flags=re.MULTILINE)
-        
-        for i, section in enumerate(sections[1:]):
-            lines = section.strip().split('\n')
+        chapters = []
+
+        for section in sections[1:]:
+            lines = section.strip().split("\n")
             if not lines:
                 continue
-            
-            chapter_title = lines[0].strip()
-            body = '\n'.join(lines[1:]).strip()
-            
-            # Mood extraction from generated comment
-            mood_match = re.search(r"<!-- MOOD:\s*(.*?)\s*-->", body)
-            mood = mood_match.group(1).strip() if mood_match else self.detect_mood(chapter_title, body)
 
-            # Quote extraction from generated comment
+            chapter_title = lines[0].strip()
+            body = "\n".join(lines[1:]).strip()
+            mood_match = re.search(r"<!-- MOOD:\s*(.*?)\s*-->", body)
             quote_match = re.search(r"<!-- QUOTE:\s*(.*?)\s*-->", body)
-            chapter_quote = quote_match.group(1).strip() if quote_match else ""
-            
-            # Clean up tags
+            image_match = re.search(r"<!-- IMAGE:\s*(.*?)\s*-->", body)
+
+            mood = mood_match.group(1).strip() if mood_match else self.detect_mood(chapter_title, body)
+            quote = quote_match.group(1).strip() if quote_match else ""
+            image_uri = self.to_file_uri(image_match.group(1).strip()) if image_match else self.to_file_uri(MOOD_ASSETS.get(mood, MOOD_ASSETS["family"]))
+
             body = re.sub(r"<!-- MOOD:.*?-->", "", body).strip()
             body = re.sub(r"<!-- QUOTE:.*?-->", "", body).strip()
-            paragraphs = [p.strip() for p in re.split(r'\n\s*\n', body) if p.strip()]
-            
-            primary_image = "file:///" + MOOD_ASSETS.get(mood, MOOD_ASSETS["family"]).replace("\\", "/")
-            
-            chapters.append({
-                "chapter_title": chapter_title,
-                "paragraphs": paragraphs,
-                "images": [primary_image],
-                "mood": mood,
-                "quote": chapter_quote
-            })
+            body = re.sub(r"<!-- IMAGE:.*?-->", "", body).strip()
+            paragraphs = [p.strip() for p in re.split(r"\n\s*\n", body) if p.strip()]
+
+            chapters.append(
+                {
+                    "chapter_title": chapter_title,
+                    "paragraphs": paragraphs,
+                    "image": image_uri,
+                    "has_image": self.image_exists(image_uri),
+                    "title_size": self.get_title_size(chapter_title),
+                    "title_theme": "dark" if self.get_image_luminance(image_uri) > 115 else "light",
+                    "mood": mood,
+                    "quote": quote,
+                }
+            )
 
         return {"title": title, "chapters": chapters}
 
     def paginate_to_spreads(self, data):
-        """
-        Deterministic Rhythm Pagination Engine.
-        """
         spreads = []
-        
-        for chapter_idx, chapter in enumerate(data['chapters']):
+        for chapter_idx, chapter in enumerate(data["chapters"]):
             chapter_num = chapter_idx + 1
-            paras = list(chapter['paragraphs'])
-            chapter_templates = []
-            
-            intro_quote = paras[0][:80] + "..." if paras and len(paras[0]) > 80 else (paras[0] if paras else "")
+            paragraphs = list(chapter["paragraphs"])
+            first_para = paragraphs.pop(0) if paragraphs else ""
 
-            # --- Scene 1: Poster Opener (T1) ---
-            text_for_opener = []
-            if paras:
-                text_for_opener = [paras.pop(0)]
-
-            opener_img = chapter['images'][0] if chapter['images'] else ""
-            has_bg_image = False
-            if opener_img:
-                clean_p = opener_img.replace("file:///", "").replace("/", os.sep)
-                if os.path.exists(clean_p):
-                    has_bg_image = True
-
-            brightness = self.get_image_luminance(opener_img) if has_bg_image else 255
-            title_theme = "dark" if brightness > 100 else "light"
-            title_size = self.get_title_size(chapter['chapter_title'])
-            
-            spreads.append({
-                "type": "T1",
-                "chapter_num": chapter_num,
-                "chapter_title": chapter['chapter_title'],
-                "title_size": title_size,
-                "images": chapter['images'],
-                "mood": chapter['mood'],
-                "title_theme": title_theme,
-                "has_bg_image": has_bg_image,
-                "intro_quote": intro_quote,
-                "left_content": {"paragraphs": []}, 
-                "right_content": {"paragraphs": text_for_opener}
-            })
-            chapter_templates.append("T1")
-
-            if has_bg_image and paras:
-                # --- Scene 2: The Visual Anchor (T7) ---
-                text_chunk_right = []
-                current_lines = 0
-                max_lines = 28 # 이미지 옆은 여백을 위해 줄 수 타이트하게 제한
-                
-                while paras and current_lines < max_lines:
-                    p_lines = self.estimate_lines(paras[0])
-                    if current_lines + p_lines <= max_lines:
-                        text_chunk_right.append(paras.pop(0))
-                        current_lines += p_lines
-                    else:
-                        break
-                
-                spreads.append({
-                    "type": "T7",
+            spreads.append(
+                {
+                    "type": "opener",
                     "chapter_num": chapter_num,
-                    "chapter_title": chapter['chapter_title'],
-                    "images": chapter['images'],
-                    "left_content": {},
-                    "right_content": {"paragraphs": text_chunk_right}
-                })
-                chapter_templates.append("T7")
+                    "chapter_title": chapter["chapter_title"],
+                    "title_size": chapter["title_size"],
+                    "title_theme": chapter["title_theme"],
+                    "image": chapter["image"],
+                    "has_image": chapter["has_image"],
+                    "right_paragraphs": [first_para] if first_para else [],
+                    "quote": chapter["quote"],
+                }
+            )
 
-            # --- Step 3: Fill remaining content (Deterministic Text Layout) ---
-            while paras:
-                max_lines_total = 64
-                collected_paras = []
-                total_lines = 0
-                
-                while paras and total_lines < max_lines_total:
-                    p_lines = self.estimate_lines(paras[0])
-                    if total_lines + p_lines <= max_lines_total:
-                        collected_paras.append(paras.pop(0))
-                        total_lines += p_lines
-                    else:
+            while paragraphs:
+                collected = []
+                lines = 0
+                while paragraphs and lines < 56:
+                    next_lines = self.estimate_lines(paragraphs[0])
+                    if collected and lines + next_lines > 56:
                         break
-                
-                if not collected_paras:
-                    break
+                    collected.append(paragraphs.pop(0))
+                    lines += next_lines
 
-                # Determistic 분배 (무조건 최소 좌측 1문단 보장)
-                if len(collected_paras) == 1:
-                    # 1단락이면 무조건 왼쪽에 몰아넣어 여백의 미 살림
-                    text_chunk_left = collected_paras
-                    text_chunk_right = []
-                    selected_type = "T5"
-                else:
-                    mid_line = total_lines / 2
-                    accum = 0
-                    split_idx = 1
-                    for idx, p in enumerate(collected_paras):
-                        accum += self.estimate_lines(p)
-                        if accum >= mid_line and idx > 0:
-                            split_idx = idx + 1
-                            break
-                    
-                    if split_idx >= len(collected_paras): split_idx = len(collected_paras) - 1
-                    if split_idx < 1: split_idx = 1
-                    
-                    text_chunk_left = collected_paras[:split_idx]
-                    text_chunk_right = collected_paras[split_idx:]
-                    selected_type = "T2" if len(collected_paras) >= 4 else "T5"
-
-                spreads.append({
-                    "type": selected_type,
-                    "chapter_num": chapter_num,
-                    "chapter_title": chapter['chapter_title'],
-                    "images": chapter['images'],
-                    "left_content": {"paragraphs": text_chunk_left},
-                    "right_content": {"paragraphs": text_chunk_right}
-                })
-                chapter_templates.append(selected_type)
-
-                # 감정 쉼표 삽입 룰: 글이 연속 2번 꽉찼거나, T2/T5 연속이면 휴식 부여
-                if paras and len(chapter_templates) >= 3 and chapter_templates[-1] in ["T2", "T5"] and chapter_templates[-2] in ["T2", "T5"]:
-                    
-                    # 추출된 Quote가 있으면 우선 사용, 없으면 본문 첫 문단에서 차용
-                    if chapter.get('quote'):
-                        quote_text = chapter['quote']
-                        chapter['quote'] = "" # 소비함
-                    else:
-                        quote_text = paras.pop(0)[:150] + "..." if paras and len(paras[0]) > 150 else (paras.pop(0) if paras else "기억은 오래도록 머뭅니다.")
-                        
-                    spreads.append({
-                        "type": "T8",
+                midpoint = max(1, len(collected) // 2)
+                spreads.append(
+                    {
+                        "type": "text",
                         "chapter_num": chapter_num,
-                        "chapter_title": chapter['chapter_title'],
-                        "images": chapter['images'],
-                        "quote_text": quote_text,
-                        "left_content": {},
-                        "right_content": {}
-                    })
-                    chapter_templates.append("T8")
+                        "chapter_title": chapter["chapter_title"],
+                        "image": chapter["image"],
+                        "has_image": chapter["has_image"],
+                        "left_paragraphs": collected[:midpoint],
+                        "right_paragraphs": collected[midpoint:],
+                    }
+                )
 
-            # --- Step 4: Flush remaining Quote at the end of Chapter ---
-            if chapter.get('quote'):
-                spreads.append({
-                    "type": "T8",
-                    "chapter_num": chapter_num,
-                    "chapter_title": chapter['chapter_title'],
-                    "images": chapter['images'],
-                    "quote_text": chapter['quote'],
-                    "left_content": {},
-                    "right_content": {}
-                })
-                chapter_templates.append("T8")
-                chapter['quote'] = ""
+            if chapter["quote"]:
+                spreads.append(
+                    {
+                        "type": "quote",
+                        "chapter_num": chapter_num,
+                        "chapter_title": chapter["chapter_title"],
+                        "image": chapter["image"],
+                        "has_image": chapter["has_image"],
+                        "quote": chapter["quote"],
+                    }
+                )
 
-            print(f"LAYOUT: Chapter {chapter_num} ({chapter.get('mood','')}) -> {' -> '.join(chapter_templates)}")
+        return {"title": data["title"], "spreads": spreads}
 
-        return {"title": data.get('title', '자서전'), "spreads": spreads}
-
-    def generate_premium_pdf(self, markdown_content: str, output_path: str):
+    def generate_premium_pdf(self, markdown_content: str, output_path: str, theme: str = "classic"):
+        self.ensure_default_assets()
         raw_data = self.parse_markdown_content(markdown_content)
         spread_data = self.paginate_to_spreads(raw_data)
+        style = self.THEME_STYLES.get(theme, self.THEME_STYLES["classic"])
 
-        # spread-based Template (304x225mm)
         html_template = """
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-    <meta charset="UTF-8">
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Nanum+Myeongjo:wght@400;700&display=swap');
-
-        @page {
-            size: 304mm 225mm;
-            margin: 0;
-        }
-
-        body {
-            font-family: 'Nanum Myeongjo', serif;
-            font-size: 10.5pt;
-            line-height: 1.6;
-            color: #222;
-            margin: 0;
-            padding: 0;
-        }
-
-        .spread {
-            width: 304mm;
-            height: 225mm;
-            display: flex;
-            background-color: white;
-            position: relative;
-            overflow: hidden;
-            break-after: page;
-        }
-
-        /* Gutter (Gradients at center) */
-        .spread::after {
-            content: "";
-            position: absolute;
-            left: 152mm;
-            top: 0;
-            bottom: 0;
-            width: 12mm;
-            transform: translateX(-50%);
-            background: linear-gradient(to right, rgba(0,0,0,0.01), rgba(0,0,0,0.06) 50%, rgba(0,0,0,0.01));
-            z-index: 100;
-            pointer-events: none;
-        }
-
-        .page {
-            width: 152mm;
-            height: 225mm;
-            box-sizing: border-box;
-            position: relative;
-            display: flex;
-            flex-direction: column;
-            padding: 20mm 15mm 20mm 25mm; 
-        }
-
-        .page.left {
-            padding: 22mm 25mm 22mm 18mm; /* Inside(Right) 25mm, Outside(Left) 18mm */
-        }
-        .page.right {
-            padding: 22mm 18mm 22mm 25mm; /* Inside(Left) 25mm, Outside(Right) 18mm */
-        }
-
-        /* --- Header / Footer --- */
-        .header {
-            font-size: 8.5pt;
-            color: #aaa;
-            margin-bottom: 8mm;
-            display: flex;
-            justify-content: space-between;
-            border-bottom: 0.3pt solid #eee;
-            padding-bottom: 2mm;
-        }
-        .footer {
-            position: absolute;
-            bottom: 12mm;
-            font-size: 9pt;
-            color: #888;
-        }
-        .page.left .footer { left: 18mm; }
-        .page.right .footer { right: 18mm; }
-
-        /* --- Typography --- */
-        p {
-            margin: 0 0 1.2em 0;
-            text-indent: 1em;
-            text-align: justify;
-            word-break: keep-all;
-        }
-        p:first-of-type { text-indent: 0; }
-
-        .lead-para {
-            font-size: 1.15em;
-            font-weight: 500;
-            line-height: 1.7;
-            color: #000;
-            margin-bottom: 2em;
-        }
-
-        /* --- Template 1: Chapter Opener --- */
-        .t1-opener {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            position: relative;
-            background-color: #fafafa;
-            width: 304mm;
-        }
-        
-        .t1-background {
-            position: absolute;
-            inset: 0;
-            background-size: cover;
-            background-position: center;
-            z-index: 1;
-        }
-        
-        .t1-overlay {
-            position: absolute;
-            inset: 0;
-            z-index: 2;
-        }
-        
-        .t1-opener.no-image {
-            background: linear-gradient(135deg, #fdfcfb 0%, #e2d1c3 100%);
-        }
-        .t1-opener.no-image .t1-background { display: none; }
-        .t1-opener.no-image .t1-overlay {
-            background: linear-gradient(to right, rgba(0,0,0,0.03) 0%, transparent 152mm, rgba(0,0,0,0.01) 100%);
-        }
-
-        .t1-typography {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            justify-content: flex-end;
-            padding: 30mm 15mm;
-            position: relative;
-            z-index: 3;
-            max-width: 122mm;
-        }
-
-        .t1-opener.theme-light { color: white; }
-        .t1-opener.theme-light .t1-overlay {
-            background: linear-gradient(to top, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.3) 45%, transparent 100%);
-        }
-        
-        .t1-opener.theme-dark { color: #111; }
-        .t1-opener.theme-dark.with-image .t1-overlay {
-            background: linear-gradient(to top, rgba(255,255,255,0.7) 0%, rgba(255,255,255,0.2) 60%, transparent 100%);
-            backdrop-filter: blur(3px);
-        }
-
-        .chapter-num {
-            font-size: 14pt;
-            letter-spacing: 12px;
-            margin-bottom: 5mm;
-            text-transform: uppercase;
-            font-weight: 300;
-            opacity: 0.9;
-        }
-        .title-accent {
-            width: 15mm;
-            height: 2pt;
-            background: currentColor;
-            margin-bottom: 8mm;
-        }
-        .chapter-title {
-            font-weight: 800;
-            line-height: 1.3;
-            word-break: keep-all; 
-        }
-        .chapter-sub {
-            font-size: 10pt;
-            letter-spacing: 6px;
-            margin-top: 12mm;
-            opacity: 0.7;
-            text-transform: uppercase;
-        }
-
-        .image-full {
-             width: calc(100% + 43mm);
-            height: calc(100% + 44mm);
-            margin: -22mm -25mm -22mm -18mm;
-            object-fit: cover;
-        }
-        
-        .t7-image {
-            width: calc(100% + 40mm);
-            height: calc(100% + 44mm);
-            margin: -22mm -25mm -22mm -18mm;
-            object-fit: cover;
-        }
-
-        .image-inline {
-            width: 100%;
-            height: auto;
-            max-height: 80mm;
-            object-fit: cover;
-            margin: 10mm 0;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
-        }
-        .caption {
-            font-size: 8.5pt;
-            font-style: italic;
-            color: #999;
-            text-align: center;
-            margin-top: 3mm;
-        }
-
-        .t8-quote-box {
-            flex: 1;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 30mm 15mm;
-            background-color: #fdfdfd;
-        }
-        .t8-quote-text {
-            font-size: 20pt;
-            color: #111;
-            line-height: 1.8;
-            text-align: center;
-            font-weight: 700;
-            position: relative;
-            font-style: italic;
-            word-break: keep-all;
-        }
-        .t8-quote-text::before {
-            content: "“";
-            font-size: 80pt;
-            color: #eee;
-            position: absolute;
-            top: -30mm;
-            left: 50%;
-            transform: translateX(-50%);
-        }
-    </style>
+  <meta charset="UTF-8">
+  <style>
+    @page { size: 304mm 225mm; margin: 0; }
+    body {
+      margin: 0;
+      font-family: {{ style.font_family }};
+      color: {{ style.text_color }};
+      background: {{ style.bg_color }};
+    }
+    .spread {
+      width: 304mm;
+      height: 225mm;
+      display: flex;
+      page-break-after: always;
+      position: relative;
+      overflow: hidden;
+      background: {{ style.bg_color }};
+    }
+    .spread::after {
+      content: "";
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      left: 152mm;
+      width: 10mm;
+      transform: translateX(-50%);
+      background: linear-gradient(to right, rgba(0,0,0,0.02), rgba(0,0,0,0.08), rgba(0,0,0,0.02));
+      z-index: 30;
+    }
+    .page {
+      width: 152mm;
+      height: 225mm;
+      box-sizing: border-box;
+      position: relative;
+      overflow: hidden;
+      background: {{ style.bg_color }};
+    }
+    .page.left { padding: 22mm 25mm 20mm 18mm; }
+    .page.right { padding: 22mm 18mm 20mm 25mm; }
+    .header {
+      height: 9mm;
+      font-size: 8pt;
+      color: {{ style.muted_color }};
+      border-bottom: 0.3pt solid rgba(0,0,0,0.12);
+      margin-bottom: 9mm;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+    }
+    .footer {
+      position: absolute;
+      bottom: 10mm;
+      color: {{ style.muted_color }};
+      font-size: 8pt;
+    }
+    .left .footer { left: 18mm; }
+    .right .footer { right: 18mm; }
+    p {
+      font-size: 10.8pt;
+      line-height: 1.72;
+      margin: 0 0 1.15em 0;
+      text-align: justify;
+      word-break: keep-all;
+    }
+    .lead p:first-child {
+      font-size: 12pt;
+      line-height: 1.82;
+      font-weight: 600;
+    }
+    .opener {
+      position: absolute;
+      top: 0;
+      right: 0;
+      bottom: 0;
+      left: 0;
+      background: {{ style.card_bg }};
+    }
+    .opener-image {
+      position: absolute;
+      top: 0;
+      right: 0;
+      bottom: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+    .opener-overlay {
+      position: absolute;
+      top: 0;
+      right: 0;
+      bottom: 0;
+      left: 0;
+    }
+    .theme-light .opener-overlay {
+      background: linear-gradient(to top, rgba(0,0,0,0.82), rgba(0,0,0,0.34), rgba(0,0,0,0.08));
+    }
+    .theme-dark .opener-overlay {
+      background: linear-gradient(to top, rgba(255,255,255,0.82), rgba(255,255,255,0.32), rgba(255,255,255,0.06));
+    }
+    .opener-copy {
+      position: absolute;
+      left: 24mm;
+      bottom: 30mm;
+      width: 108mm;
+      z-index: 2;
+    }
+    .chapter-kicker {
+      color: {{ style.accent_color }};
+      font-size: 12pt;
+      font-weight: 700;
+      letter-spacing: 6px;
+      margin-bottom: 6mm;
+      text-transform: uppercase;
+    }
+    .chapter-title {
+      line-height: 1.25;
+      font-weight: 800;
+      word-break: keep-all;
+    }
+    .theme-light .chapter-title,
+    .theme-light .chapter-subtitle { color: white; }
+    .chapter-rule {
+      width: 22mm;
+      height: 2pt;
+      background: {{ style.accent_color }};
+      margin: 0 0 7mm 0;
+    }
+    .chapter-subtitle {
+      margin-top: 8mm;
+      font-size: 9pt;
+      letter-spacing: 3px;
+      color: {{ style.muted_color }};
+    }
+    .chapter-image {
+      width: calc(100% + 43mm);
+      height: 62mm;
+      object-fit: cover;
+      display: block;
+      margin: 0 -18mm 9mm -25mm;
+      border-bottom: 3pt solid {{ style.accent_color }};
+    }
+    .quote-box {
+      position: absolute;
+      top: 0;
+      right: 0;
+      bottom: 0;
+      left: 0;
+      background: {{ style.card_bg }};
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 30mm;
+      box-sizing: border-box;
+    }
+    .quote-image {
+      position: absolute;
+      top: 0;
+      right: 0;
+      bottom: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      opacity: 0.14;
+    }
+    .quote-text {
+      position: relative;
+      z-index: 2;
+      font-size: 20pt;
+      line-height: 1.7;
+      text-align: center;
+      font-weight: 800;
+      color: {{ style.text_color }};
+      word-break: keep-all;
+    }
+    .ending {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      font-size: 14pt;
+      color: {{ style.muted_color }};
+      background: {{ style.card_bg }};
+    }
+  </style>
 </head>
 <body>
-    {% for spread in spreads %}
-    <div class="spread">
-        <div class="page left">
-            <div class="header">
-                <span>{{ title }}</span>
-                <span></span>
-            </div>
-            <div class="content" style="flex: 1; position: relative;">
-                {% if spread.type == 'T1' %}
-                    <div class="t1-opener theme-{{ spread.title_theme }} {% if spread.has_bg_image %}with-image{% else %}no-image{% endif %}">
-                        <div class="t1-background" {% if spread.has_bg_image %}style="background-image: url('{{ spread.images[0] }}');"{% endif %}></div>
-                        <div class="t1-overlay"></div>
-                        <div class="t1-typography">
-                            <div class="chapter-num">Chapter {{ spread.chapter_num }}</div>
-                            <div class="title-accent"></div>
-                            <div class="chapter-title" style="font-size: {{ spread.title_size }};">{{ spread.chapter_title }}</div>
-                            <div class="chapter-sub">Record of a Beautiful Life</div>
-                        </div>
-                    </div>
-                {% elif spread.type == 'T3' %}
-                    <img src="{{ spread.images[0] }}" class="image-full" alt="Memory">
-                {% elif spread.type == 'T7' %}
-                    <img src="{{ spread.images[0] }}" class="t7-image">
-                {% elif spread.type == 'T8' %}
-                    <div class="t8-quote-box">
-                        <div class="t8-quote-text">{{ spread.quote_text }}</div>
-                    </div>
-                {% else %}
-                    {% if spread.left_content.paragraphs %}
-                        {% for p in spread.left_content.paragraphs %}
-                            <p class="{% if loop.first and spread.type == 'T1' %}lead-para{% endif %}">{{ p }}</p>
-                        {% endfor %}
-                    {% endif %}
-                {% endif %}
-            </div>
-            <div class="footer">{{ loop.index * 2 - 1 }}</div>
+{% for spread in spreads %}
+  <div class="spread">
+    <div class="page left">
+      {% if spread.type == "opener" %}
+        <div class="opener theme-{{ spread.title_theme }}">
+          {% if spread.has_image %}
+            <img class="opener-image" src="{{ spread.image }}" alt="">
+          {% endif %}
+          <div class="opener-overlay"></div>
+          <div class="opener-copy">
+            <div class="chapter-kicker">Chapter {{ spread.chapter_num }}</div>
+            <div class="chapter-rule"></div>
+            <div class="chapter-title" style="font-size: {{ spread.title_size }};">{{ spread.chapter_title }}</div>
+            <div class="chapter-subtitle">Life Legacy Autobiography</div>
+          </div>
         </div>
-
-        <div class="page right">
-            <div class="header">
-                <span></span>
-                <span>{{ spread.chapter_title }}</span>
-            </div>
-            <div class="content" style="flex: 1;">
-                {% if spread.right_content.paragraphs %}
-                    {% for p in spread.right_content.paragraphs %}
-                        <p class="{% if loop.first and spread.type == 'T1' %}lead-para{% endif %}">{{ p }}</p>
-                    {% endfor %}
-                {% endif %}
-                {% if spread.type == 'T2' and loop.index % 3 == 0 %}
-                    <div style="margin-top: 15mm;">
-                        <img src="{{ spread.images[0] }}" class="image-inline">
-                        <div class="caption">기억의 창 너머로 마주한 소중한 시간들.</div>
-                    </div>
-                {% endif %}
-            </div>
-            <div class="footer">{{ loop.index * 2 }}</div>
+      {% elif spread.type == "quote" %}
+        <div class="quote-box">
+          {% if spread.has_image %}<img class="quote-image" src="{{ spread.image }}" alt="">{% endif %}
+          <div class="quote-text">{{ spread.quote }}</div>
         </div>
+      {% else %}
+        <div class="header"><span>{{ title }}</span><span></span></div>
+        {% if spread.has_image %}<img class="chapter-image" src="{{ spread.image }}" alt="">{% endif %}
+        {% for p in spread.left_paragraphs %}
+          <p>{{ p }}</p>
+        {% endfor %}
+        <div class="footer">{{ loop.index * 2 - 1 }}</div>
+      {% endif %}
     </div>
-    {% endfor %}
-    <div class="spread">
-        <div class="page left" style="background-color: #fafafa;"></div>
-        <div class="page right" style="background-color: #fafafa; display: flex; align-items: center; justify-content: center; text-align: center;">
-            <div style="color: #bbb; font-style: italic;">기록된 삶은 잊히지 않는 역사가 됩니다.<br><br>— THE END —</div>
-        </div>
+    <div class="page right">
+      <div class="header"><span></span><span>{{ spread.chapter_title }}</span></div>
+      <div class="{% if spread.type == 'opener' %}lead{% endif %}">
+        {% for p in spread.right_paragraphs %}
+          <p>{{ p }}</p>
+        {% endfor %}
+      </div>
+      <div class="footer">{{ loop.index * 2 }}</div>
     </div>
+  </div>
+{% endfor %}
+  <div class="spread">
+    <div class="page left ending"></div>
+    <div class="page right ending">
+      <div>기록은 삶을 오래 남기는 또 하나의 방식입니다.<br><br>THE END</div>
+    </div>
+  </div>
 </body>
 </html>
 """
-        template = Template(html_template)
-        rendered_html = template.render(
-            title=spread_data['title'], 
-            spreads=spread_data['spreads']
+        rendered_html = Template(html_template).render(
+            title=spread_data["title"],
+            spreads=spread_data["spreads"],
+            style=style,
         )
 
-        # Ensure directory exists
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
-        
-        # Render PDF
-        pdf_doc = HTML(string=rendered_html, base_url=".")
-        pdf_doc.write_pdf(target=output_path)
-        
-        # Count pages (optional: we can get it from the rendered document)
-        page_count = len(pdf_doc.render().pages)
-        
+        html = HTML(string=rendered_html, base_url=str(PROJECT_ROOT))
+        html.write_pdf(target=output_path)
+        page_count = len(html.render().pages)
         return output_path, page_count
+
 
 pdf_service = PdfService()

@@ -1,4 +1,4 @@
-from openai import AsyncOpenAI
+﻿from openai import AsyncOpenAI
 from app.core.config import settings
 from app.services.vector_store import retrieve_all_user_contexts, retrieve_chapter_contexts
 from app.services.timeline_service import timeline_service
@@ -8,52 +8,52 @@ import json
 
 CHAPTER_ROLES = {
     "childhood": {
-        "theme": "성장 배경, 가족 분위기, 최초 기억 형성",
-        "avoid": "정치적 이슈, 직업적 커리어, 연애",
-        "tone": "따뜻함, 호기심, 애틋함",
-        "role": "자서전의 서막, 가치관의 뿌리 제시"
+        "theme": "성장 배경, 가족 분위기, 최초의 기억 형성",
+        "avoid": "정치적 이슈, 직업과 커리어의 자세한 이야기",
+        "tone": "따뜻함, 호기심, 순수함",
+        "role": "자서전의 시작, 가치관의 뿌리 제시"
     },
     "school": {
-        "theme": "친구 관계, 정체성 탐색, 작은 반항과 학업/도전",
-        "avoid": "심각한 어른의 고충, 재정적 파탄, 은퇴 후 이야기",
-        "tone": "활기참, 풋풋함, 변화",
-        "role": "자아 형성 및 관계의 확장"
+        "theme": "친구 관계, 정체성 탐색, 작은 도전과 배움",
+        "avoid": "지나치게 무거운 고난, 가정사 중심 서술",
+        "tone": "생기, 떨림, 변화",
+        "role": "자아 형성과 관계의 확장"
     },
     "youth": {
-        "theme": "진로 선택, 현실 진입, 첫 사회생활의 낯섦과 적응",
-        "avoid": "노년의 회한, 가족의 소멸 등 후반부 주제",
-        "tone": "열정, 좌충우돌, 긴장감",
+        "theme": "진로 선택, 현실 진입, 첫 사회생활과 적응",
+        "avoid": "노년 회고나 가족 마무리 중심 주제",
+        "tone": "열정, 고민, 긴장감",
         "role": "성인으로서의 첫 발돋움과 홀로서기"
     },
     "marriage": {
-        "theme": "배우자와의 만남, 관계의 확장, 책임감, 안정",
-        "avoid": "가족 밖의 지엽적인 업무 에피소드 집중",
-        "tone": "포용, 사랑, 헌신, 따뜻함",
-        "role": "가족 형성 및 개인에서 공동체로의 변화"
+        "theme": "배우자와의 만남, 관계의 확장, 책임과 안정",
+        "avoid": "가족 밖의 지식적 업무 에피소드 집중",
+        "tone": "사랑, 신뢰, 성숙함",
+        "role": "개인에서 공동체로 확장되는 시기"
     },
     "career": {
-        "theme": "사회적 압박, 직장에서의 갈등/위기, 실패와 버팀, 성취",
-        "avoid": "지나치게 평온하고 안일한 회상 위주 서술",
+        "theme": "사회적 역할, 직장에서의 갈등과 위기, 실패와 성취",
+        "avoid": "지나치게 평온한 일상 위주 서술",
         "tone": "치열함, 결단, 성취감",
-        "role": "인생의 전성기 및 극복의 서사"
+        "role": "인생의 완성기와 극복의 서사"
     },
     "hobby": {
-        "theme": "일상의 균형, 자아 발견, 회복, 취미 생활",
+        "theme": "일상의 균형, 자아 발견, 취미와 회복",
         "avoid": "과도한 업무 스트레스 묘사",
-        "tone": "여유, 즐거움, 소소한 행복",
-        "role": "삶의 숨고르기 및 개인적 내면 탐구"
+        "tone": "자유, 즐거움, 소소한 행복",
+        "role": "삶의 숨 고르기와 개인의 내면 탐구"
     },
     "self_reflection": {
-        "theme": "성찰, 가치관 변화, 삶과 건강에 대한 태도",
+        "theme": "성찰, 가치관의 변화, 삶과 건강에 대한 태도",
         "avoid": "단순한 사건 나열",
-        "tone": "차분함, 달관, 진지함",
-        "role": "인생의 깊이와 성숙한 시각의 표현"
+        "tone": "차분함, 회고, 진심",
+        "role": "인생의 깊이와 성숙한 생각의 표현"
     },
     "family": {
-        "theme": "앞으로의 다짐, 남기고 싶은 말, 인생 철학, 가족의 미래",
+        "theme": "앞으로의 당부, 남기고 싶은 말, 인생 철학, 가족의 미래",
         "avoid": "과거 사건 중심의 긴 회상",
-        "tone": "소망, 감사, 단단함",
-        "role": "자서전의 울림 있는 마무리"
+        "tone": "따뜻함, 감사, 담담함",
+        "role": "자서전의 여운 있는 마무리"
     }
 }
 
@@ -68,25 +68,24 @@ def group_answers_by_chapter(answers: list) -> dict:
         "self_reflection": [],
         "family": []
     }
-    
-    # 챕터 감지를 위한 간단한 키워드 맵 (질문이나 답변에 이 단어가 들어있으면 해당 챕터로 분류)
+
     keyword_map = {
-        "childhood": ["유년", "어린 시절", "태어난", "고향", "부모님", "아버지", "어머니", "형제", "자매"],
-        "school": ["학교", "학창", "선생님", "친구", "소풍", "공부", "사춘기", "중학교", "고등학교", "초등학교"],
+        "childhood": ["유년", "어린 시절", "태어난", "고향", "부모", "아버지", "어머니", "형제", "자매"],
+        "school": ["학교", "학창", "선생님", "친구", "공부", "사춘기", "중학교", "고등학교", "초등학교"],
         "youth": ["대학", "20대", "청년", "첫 직장", "군대", "진로", "전공", "취업"],
-        "marriage": ["결혼", "배우자", "남편", "아내", "연애", "신혼", "첫째", "출산", "아이들", "자식"],
-        "career": ["직장", "회사", "업무", "성취", "도전", "실패", "퇴사", "승진", "동료", "상사", "사업"],
-        "hobby": ["취미", "여가", "주말", "운동", "그림", "음악", "여행", "휴식", "좋아하는"],
+        "marriage": ["결혼", "배우자", "남편", "아내", "연애", "신혼", "출산", "아이", "자식"],
+        "career": ["직장", "회사", "업무", "성취", "도전", "실패", "동료", "상사", "사업"],
+        "hobby": ["취미", "여가", "주말", "운동", "그림", "음악", "여행", "음식", "좋아하는"],
         "self_reflection": ["건강", "나이", "깨달음", "가치관", "인생", "태도", "후회", "보람", "성찰"],
-        "family": ["미래", "계획", "자녀", "손주", "가족", "남기고", "다짐", "꿈", "철학"]
+        "family": ["미래", "계획", "자녀", "손주", "가족", "남기고", "당부", "꿈", "철학"]
     }
-    
+
     for item in answers:
         item_text = ""
         item_chapter = None
-        
+
         if isinstance(item, dict):
-            # toc_id 등을 통한 매칭 (1 -> childhood, 2 -> school 등)
+            # toc_id ?깆쓣 ?듯븳 留ㅼ묶 (1 -> childhood, 2 -> school ??
             toc_id = item.get("toc_id") or item.get("tocId")
             if toc_id is not None:
                 toc_id_map = {
@@ -100,22 +99,22 @@ def group_answers_by_chapter(answers: list) -> dict:
                     8: "family"
                 }
                 item_chapter = toc_id_map.get(int(toc_id))
-            
+
             if not item_chapter:
                 item_chapter = item.get("chapter_type") or item.get("chapterType")
-                
+
             q_text = item.get("question_text") or item.get("questionText") or item.get("question") or ""
             if isinstance(q_text, dict):
                 q_text = q_text.get("question_text") or q_text.get("questionText") or q_text.get("title") or ""
             a_text = item.get("answer_text") or item.get("answerText") or item.get("text") or item.get("content") or item.get("answer") or ""
-            
+
             if q_text and a_text:
                 item_text = f"Q: {q_text}\nA: {a_text}"
             else:
                 item_text = a_text or str(item)
         else:
             item_text = str(item)
-            
+
         if not item_chapter:
             detected_scores = {k: 0 for k in keyword_map.keys()}
             for ch_type, kw_list in keyword_map.items():
@@ -127,10 +126,10 @@ def group_answers_by_chapter(answers: list) -> dict:
                 item_chapter = best_ch
             else:
                 item_chapter = "family" # Fallback
-                
+
         if item_chapter in grouped:
             grouped[item_chapter].append(item_text)
-            
+
     return grouped
 
 class AutobiographyService:
@@ -138,15 +137,15 @@ class AutobiographyService:
         self.client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
 
     async def _extract_personal_details(self, context: str) -> dict:
-        system_prompt = """당신은 인물, 장소, 사건 등의 고유 정보를 정확하게 추출하는 데이터 분석가입니다.
-제공된 인터뷰/문맥 데이터에서 다음 유형의 고유 요소를 빠짐없이 추출하여 JSON 형식으로 반환하세요.
-오직 텍스트에 등장하는 사실만 추출해야 하며, 절대 지어내지 마세요.
+        system_prompt = """?뱀떊? ?몃Ъ, ?μ냼, ?ш굔 ?깆쓽 怨좎쑀 ?뺣낫瑜??뺥솗?섍쾶 異붿텧?섎뒗 ?곗씠??遺꾩꽍媛?낅땲??
+?쒓났???명꽣酉?臾몃㎘ ?곗씠?곗뿉???ㅼ쓬 ?좏삎??怨좎쑀 ?붿냼瑜?鍮좎쭚?놁씠 異붿텧?섏뿬 JSON ?뺤떇?쇰줈 諛섑솚?섏꽭??
+?ㅼ쭅 ?띿뒪?몄뿉 ?깆옣?섎뒗 ?ъ떎留?異붿텧?댁빞 ?섎ŉ, ?덈? 吏?대궡吏 留덉꽭??
 {
-  "people": ["사람 이름, 가족 관계 단위나 직책 등"],
-  "places": ["장소, 지역, 건물명 등"],
-  "activities": ["취미, 특기, 반복 활동 등"],
-  "achievements": ["수상 내역, 자격, 성취 등"],
-  "events": ["특정 사건명, 여행, 위기 순간 등"]
+  "people": ["?щ엺 ?대쫫, 媛議?愿怨??⑥쐞??吏곸콉 ??],
+  "places": ["?μ냼, 吏?? 嫄대Ъ紐???],
+  "activities": ["痍⑤?, ?밴린, 諛섎났 ?쒕룞 ??],
+  "achievements": ["?섏긽 ?댁뿭, ?먭꺽, ?깆랬 ??],
+  "events": ["?뱀젙 ?ш굔紐? ?ы뻾, ?꾧린 ?쒓컙 ??]
 }
 """
         try:
@@ -164,129 +163,293 @@ class AutobiographyService:
             print(f"Detail extraction error: {e}")
             return {"people": [], "places": [], "activities": [], "achievements": [], "events": []}
 
-    async def generate_autobiography_memoir(self, user_id: str, user_name: str, retrieved_context: str = None, answers: list = None) -> str:
+    async def _generate_dalle_illustration(self, user_id: str, chapter) -> str | None:
         """
-        Timeline Graph와 Scene Composition을 거쳐 서사를 생성합니다.
+        OpenAI DALL-E 3瑜??몄텧?섏뿬 梨뺥꽣 ?댁슜??留욌뒗 媛먯꽦?곸씤 ?섏콈?????쏀솕瑜??숈쟻?쇰줈 ?앹꽦?섍퀬 濡쒖뺄????ν빀?덈떎.
+        """
+        # ???뺣낫 痍⑦빀?섏뿬 ?꾨＼?꾪듃 ?묒꽦
+        scene_summaries = []
+        for s in chapter.scenes:
+            scene_summaries.append(f"- {s.title}: {s.setting or ''} {s.resolution or ''}")
+        scenes_text = "\n".join(scene_summaries)
+
+        prompt = f"""A soft, artistic, minimalist watercolor illustration representing the theme of: "{chapter.chapter_title}".
+Context details:
+{scenes_text}
+
+Warm pastel colors, peaceful and nostalgic storybook art style, clean edges, high quality, no text or signatures."""
+
+        try:
+            print(f"[DALL-E] Generating dynamic illustration for Chapter {chapter.chapter_num}...")
+            response = await self.client.images.generate(
+                model="dall-e-3",
+                prompt=prompt,
+                n=1,
+                size="1024x1024"
+            )
+            image_url = response.data[0].url
+
+            import httpx
+            from pathlib import Path
+            async with httpx.AsyncClient() as http_client:
+                img_resp = await http_client.get(image_url)
+                if img_resp.status_code == 200:
+                    img_dir = Path(settings.CHROMA_DB_PATH).parent / "generated_images"
+                    os.makedirs(img_dir, exist_ok=True)
+                    img_filename = f"illustration_{user_id}_{chapter.chapter_num}.png"
+                    img_path = img_dir / img_filename
+                    with open(img_path, "wb") as f:
+                        f.write(img_resp.content)
+
+                    local_uri = f"file:///{img_path.as_posix()}"
+                    print(f"[DALL-E] Dynamic illustration saved to: {local_uri}")
+                    return local_uri
+        except Exception as e:
+            print(f"Warning: DALL-E generation failed for Chapter {chapter.chapter_num}: {e}")
+        return None
+
+    async def generate_autobiography_memoir(
+        self,
+        user_id: str,
+        user_name: str,
+        retrieved_context: str = None,
+        answers: list = None,
+        theme: str = "classic",
+        generate_illustrations: bool = False,
+        personalization: dict | None = None,
+    ) -> str:
+        """
+        Timeline Graph? Scene Composition??嫄곗퀜 ?쒖궗瑜??앹꽦?⑸땲??
         """
         if retrieved_context is None:
-            print(f"[{user_name}] 1. 전체 문맥 검색 중...")
-            # 1. 벡터 데이터베이스에서 전체 컨텍스트 검색
+            print(f"[{user_name}] 1. ?꾩껜 臾몃㎘ 寃??以?..")
+            # 1. 踰≫꽣 ?곗씠?곕쿋?댁뒪?먯꽌 ?꾩껜 而⑦뀓?ㅽ듃 寃??
             if answers:
-                # Circular import 방지를 위해 헬퍼 코드를 인라인 임포트하거나 직접 구현 가능
-                # 여기서는 answers가 있는 경우 retrieved_context가 이미 바깥에서 제공되므로 실행되지 않겠지만, Fallback으로 안전하게 방어
                 from app.api.v1.endpoints.generation import extract_context_from_answers
                 retrieved_context = extract_context_from_answers(answers)
             else:
                 retrieved_context = await retrieve_all_user_contexts(user_id=user_id, limit=30)
-        
+
         if not retrieved_context:
-            return "검색된 사용자 데이터가 없습니다. 자서전을 생성할 수 없습니다."
+            return "寃?됰맂 ?ъ슜???곗씠?곌? ?놁뒿?덈떎. ?먯꽌?꾩쓣 ?앹꽦?????놁뒿?덈떎."
 
 
-        print(f"[{user_name}] 2. Personal Detail & Timeline 추출 중...")
-        # 디테일 추출 (고유명사 증폭용)
-        personal_details = await self._extract_personal_details(retrieved_context)
-        
-        # Timeline 추출
-        timeline_events = await timeline_service.reconstruct_timeline(retrieved_context)
-        
-        print(f"[{user_name}] 3. Scene 단위 챕터 구조화 중...")
-        # Scene 구조로 재배치
+        print(f"[{user_name}] 2. Personal Detail & Timeline 異붿텧 以?..")
+        # 2-1. 怨쇨굅 RAG 湲곗뼲???꾩껜 濡쒕뱶?섏뿬 ?꾩옱 ?듬? 而⑦뀓?ㅽ듃? ?듯빀
+        past_full_memory = await retrieve_all_user_contexts(user_id=user_id, limit=30)
+
+        combined_context_parts = []
+        if retrieved_context:
+            combined_context_parts.append(f"[?꾩옱 ?듬? 湲곕줉]\n{retrieved_context}")
+        if past_full_memory:
+            combined_context_parts.append(f"[怨쇨굅 RAG 湲곗뼲]\n{past_full_memory}")
+
+        personalization = personalization or {}
+        personalization_context = self._build_personalization_context(personalization)
+        if personalization_context:
+            combined_context_parts.insert(0, personalization_context)
+
+        full_timeline_context = "\n\n".join(combined_context_parts)
+        if not full_timeline_context:
+            full_timeline_context = retrieved_context
+
+        # 2-2. ?듯빀??留λ씫?먯꽌 怨좎쑀紐낆궗(?뷀뀒?? 異붿텧 諛???꾨씪??蹂듭썝
+        personal_details = await self._extract_personal_details(full_timeline_context)
+        timeline_events = await timeline_service.reconstruct_timeline(full_timeline_context)
+
+        print(f"[{user_name}] 3. Scene ?⑥쐞 梨뺥꽣 援ъ“??以?..")
+        # Scene structure is rebuilt from the reconstructed timeline.
         chapter_data_list = await scene_builder.build_full_story_structure(timeline_events)
-        
-        # 각 챕터별로 본문 생성
-        full_markdown = f"제목: {user_name}의 자서전\n\n"
-        
+        self._apply_personalized_chapter_titles(chapter_data_list, personalization)
+
+        # 媛?梨뺥꽣蹂꾨줈 蹂몃Ц ?앹꽦
+        full_markdown = f"# {user_name}의 자서전\n\n"
+
         grouped_answers = group_answers_by_chapter(answers) if answers else {}
-        
+
         for i, chapter in enumerate(chapter_data_list):
             next_chapter = chapter_data_list[i+1] if i + 1 < len(chapter_data_list) else None
-            print(f"[{user_name}] 4. 챕터 생성 중: {chapter.chapter_num}. {chapter.chapter_title}")
-            
-            # 이 챕터에 대한 추가적인 상세 Context 검색
+            print(f"[{user_name}] 4. 梨뺥꽣 ?앹꽦 以? {chapter.chapter_num}. {chapter.chapter_title}")
+
+            # 1. ??梨뺥꽣???뱁솕??怨쇨굅 湲곕줉(RAG) 寃??
+            past_rag_context = await retrieve_chapter_contexts(user_id, chapter.chapter_type, limit=10)
+
+            # 2. ?꾩옱 ?명꽣酉??몄뀡?먯꽌 ?살? ?듬? 痍⑦빀
+            current_chapter_answers = ""
             if answers:
-                chapter_context = "\n\n".join(grouped_answers.get(chapter.chapter_type, []))
-                # 해당 챕터에 질문이 없는 경우 전체 컨텍스트를 기본 뼈대로 사용
-                if not chapter_context:
-                    chapter_context = retrieved_context
-            else:
-                chapter_context = await retrieve_chapter_contexts(user_id, chapter.chapter_type, limit=10)
-            
-            # Post-check 용이성을 위해 Retry 로직 래핑 가능 (현재는 단일 패스)
-            chapter_result = await self._generate_chapter_text(user_name, chapter, next_chapter, chapter_context, personal_details)
-            
-            # (선택) Post-check 로직: 미래 챕터에 과거 단어 너무 많으면 재시도 등...
-            
+                current_chapter_answers = "\n\n".join(grouped_answers.get(chapter.chapter_type, []))
+
+            # 3. ?꾩옱 ?듬?怨?怨쇨굅 RAG 而⑦뀓?ㅽ듃 ?듯빀 (Hybrid)
+            chapter_context_parts = []
+
+            if current_chapter_answers:
+                chapter_context_parts.append(f"[?꾩옱 ?명꽣酉??듬?]\n{current_chapter_answers}")
+
+            if past_rag_context:
+                chapter_context_parts.append(f"[怨쇨굅 湲곕줉 (RAG)]\n{past_rag_context}")
+
+            chapter_context = "\n\n".join(chapter_context_parts)
+
+            # 4. 諛⑹뼱 肄붾뱶: 留뚯빟 ?대떦 梨뺥꽣??????꾩옱/怨쇨굅 ?곗씠?곌? 紐⑤몢 ?녿떎硫??꾩껜 而⑦뀓?ㅽ듃(retrieved_context) ?ъ슜
+            if not chapter_context and retrieved_context:
+                chapter_context = retrieved_context
+
+            # Post-check ?⑹씠?깆쓣 ?꾪빐 Retry 濡쒖쭅 ?섑븨 媛??(?꾩옱???⑥씪 ?⑥뒪)
+            chapter_result = await self._generate_chapter_text(
+                user_name,
+                chapter,
+                next_chapter,
+                chapter_context,
+                personal_details,
+                personalization,
+            )
+
+            # (?좏깮) Post-check 濡쒖쭅: 誘몃옒 梨뺥꽣??怨쇨굅 ?⑥뼱 ?덈Т 留롮쑝硫??ъ떆????..
+
             chapter_text = chapter_result.get("content", "")
             chapter_quote = chapter_result.get("quote", "")
-            
+
             chapter.generated_text = chapter_text
-            
+
+            # DALL-E ?대?吏 ?앹꽦 泥섎━
+            local_image_uri = None
+            if generate_illustrations:
+                local_image_uri = await self._generate_dalle_illustration(user_id, chapter)
+
             full_markdown += f"## {chapter.chapter_title}\n"
             full_markdown += f"<!-- MOOD: {chapter.mood} -->\n"
+            if local_image_uri:
+                full_markdown += f"<!-- IMAGE: {local_image_uri} -->\n"
             full_markdown += f"{chapter_text}\n\n"
             if chapter_quote:
                 full_markdown += f"<!-- QUOTE: {chapter_quote} -->\n\n"
 
         return full_markdown
 
-    async def _generate_chapter_text(self, user_name: str, chapter, next_chapter, additional_context: str, personal_details: dict) -> dict:
+    def _build_personalization_context(self, personalization: dict) -> str:
+        if not personalization:
+            return ""
+
+        toc_plan = personalization.get("tocPlan") or []
+        purposes = personalization.get("purposes") or []
+        feedback = personalization.get("feedback") or {}
+        lines = [
+            "[Autobiography personalization]",
+            f"- name: {personalization.get('name') or ''}",
+            f"- age: {personalization.get('age') or ''}",
+            f"- life_stage: {personalization.get('lifeStage') or ''}",
+            f"- purposes: {', '.join(purposes) if isinstance(purposes, list) else purposes}",
+            f"- output_style: {personalization.get('style') or ''}",
+            f"- output_style_id: {personalization.get('styleId') or ''}",
+        ]
+        if feedback:
+            feedback_tags = feedback.get("tags") or []
+            lines.extend(
+                [
+                    "- previous_result_feedback:",
+                    f"  rating: {feedback.get('rating') or ''}",
+                    f"  tags: {', '.join(feedback_tags) if isinstance(feedback_tags, list) else feedback_tags}",
+                    f"  comment: {feedback.get('comment') or ''}",
+                    "  instruction: Improve the new autobiography by addressing this feedback without explicitly mentioning the rating.",
+                ]
+            )
+        if toc_plan:
+            lines.append("- recommended_toc:")
+            lines.extend([f"  {idx + 1}. {title}" for idx, title in enumerate(toc_plan)])
+        return "\n".join(lines)
+
+    def _apply_personalized_chapter_titles(self, chapters: list, personalization: dict):
+        toc_plan = personalization.get("tocPlan") or []
+        if not toc_plan:
+            return
+
+        for idx, chapter in enumerate(chapters):
+            if idx < len(toc_plan):
+                chapter.chapter_title = toc_plan[idx]
+
+    async def _generate_chapter_text(
+        self,
+        user_name: str,
+        chapter,
+        next_chapter,
+        additional_context: str,
+        personal_details: dict,
+        personalization: dict | None = None,
+    ) -> dict:
         """
-        구조화된 Scene 정보를 기반으로 챕터 텍스트와 에센셜 Quote를 생성합니다.
+        援ъ“?붾맂 Scene ?뺣낫瑜?湲곕컲?쇰줈 梨뺥꽣 ?띿뒪?몄? ?먯꽱??Quote瑜??앹꽦?⑸땲??
         """
         scenes_json = [s.model_dump() for s in chapter.scenes]
         role_info = CHAPTER_ROLES.get(chapter.chapter_type, CHAPTER_ROLES["family"])
-        
-        system_prompt = f"""당신은 한 사람의 생애를 깊이 있는 서사로 표현하는 베테랑 자서전 작가입니다.
-주어진 Scene 구조와 관련 문맥을 살려 1개의 챕터를 작성하세요.
+        personalization_context = self._build_personalization_context(personalization or {})
+        style = (personalization or {}).get("style") or "detailed"
+        style_id = (personalization or {}).get("styleId") or "detailed"
+        length_rule = "Write this chapter in 4 to 6 rich paragraphs."
+        if style_id == "simple":
+            length_rule = "Write this chapter in 2 to 3 concise paragraphs."
+        elif style_id == "literary":
+            length_rule = "Write this chapter like a literary essay with scene transitions and polished rhythm."
+        elif style_id == "calm":
+            length_rule = "Write this chapter calmly, emphasizing facts, choices, and changes without exaggeration."
+        elif style_id == "warm":
+            length_rule = "Write this chapter warmly, emphasizing people, relationships, gratitude, and memory."
 
-[챕터 역할 (Chapter Role)]
-- 이 장의 역할: {role_info['role']}
-- 다뤄야 할 주제: {role_info['theme']}
-- 정서 톤: {role_info['tone']}
-- 허용된 생애 주기: {chapter.chapter_type}에 맞는 이야기만 집중하고 다른 생애 이야기로 길게 새지 마세요.
-- 피해야 할 서술: {role_info['avoid']}
+        system_prompt = f"""?뱀떊? ???щ엺???앹븷瑜?源딆씠 ?덈뒗 ?쒖궗濡??쒗쁽?섎뒗 踰좏뀒???먯꽌???묎??낅땲??
+二쇱뼱吏?Scene 援ъ“? 愿??臾몃㎘???대젮 1媛쒖쓽 梨뺥꽣瑜??묒꽦?섏꽭??
 
-[서사 구조 제약 (Narrative Arc Rule) 및 연결 문장(Transition)]
-1. 단순 사건 나열 금지: 문단 구성 시 가급적 [상황/배경 → 갈등/선택 → 변화/결과 → 의미 성찰]의 흐름을 반영하세요.
-2. 모든 문단을 억지 교훈으로 끝내지 마세요. 자연스러운 여운을 남기세요.
-3. 이전 Scene과 다음 Scene이 물 흐르듯 이어지도록 시간 경과나 내면의 변화를 나타내는 부드러운 전환(Transition)을 사용하세요.
-4. [매우 중요] 본문의 마지막 문단 끝에는 반드시 다음 챕터로 자연스럽게 넘어가는 1~2문장의 '연결 문장(Transition Sentence)'을 작성하세요.
-   - 단, 마지막 챕터일 경우는 제외합니다.
-   - "다음 장에서는 ~에 대해 이야기하겠다" 식의 직설적인 표현 대신, 현재 챕터의 경험이 어떻게 다음 챕터의 밑거름이 되었는지 소설처럼 부드럽게 암시하세요.
+[媛쒖씤???묒꽦 湲곗?]
+{personalization_context}
+- 寃곌낵臾??ㅽ???吏移? {style}
+- 遺꾨웾 吏移? {length_rule}
+- 異붿쿇 紐⑹감? ?꾩옱 梨뺥꽣 ?쒕ぉ???곗꽑 諛섏쁺?섍퀬, 湲곗〈 怨좎젙 紐⑹감泥섎읆 蹂댁씠吏 ?딄쾶 ?묒꽦?섏꽭??
 
-[디테일 증폭 제약 (Personal Detail Amplifier)]
-- 제공된 '고유명사 리스트(Personal Details)' 중 이 챕터와 맥락이 닿는 '이름', '장소', '조직', '사건'을 **최소 2~3개 이상** 본문에 구체적으로 포함하세요.
-- "친구들과 바다를 갔다" 대신 "철수와 기차를 타고 강릉 바다를 보러 갔다"처럼 사실 기반의 구체적 명사를 우선하세요. (단, 없는 사실을 새로 지어내지 말 것)
+[梨뺥꽣 ??븷 (Chapter Role)]
+- ???μ쓽 ??븷: {role_info['role']}
+- ?ㅻ쨪????二쇱젣: {role_info['theme']}
+- ?뺤꽌 ?? {role_info['tone']}
+- ?덉슜???앹븷 二쇨린: {chapter.chapter_type}??留욌뒗 ?댁빞湲곕쭔 吏묒쨷?섍퀬 ?ㅻⅨ ?앹븷 ?댁빞湲곕줈 湲멸쾶 ?덉? 留덉꽭??
+- ?쇳빐?????쒖닠: {role_info['avoid']}
 
-[출력 형식 제한 (JSON)]
-다음 형태의 JSON을 반환해야 합니다:
+[?쒖궗 援ъ“ ?쒖빟 (Narrative Arc Rule) 諛??곌껐 臾몄옣(Transition)]
+1. ?⑥닚 ?ш굔 ?섏뿴 湲덉?: 臾몃떒 援ъ꽦 ??媛湲됱쟻 [?곹솴/諛곌꼍 ??媛덈벑/?좏깮 ??蹂??寃곌낵 ???섎? ?깆같]???먮쫫??諛섏쁺?섏꽭??
+2. 紐⑤뱺 臾몃떒???듭? 援먰썕?쇰줈 ?앸궡吏 留덉꽭?? ?먯뿰?ㅻ윭???ъ슫???④린?몄슂.
+3. ?댁쟾 Scene怨??ㅼ쓬 Scene??臾??먮Ⅴ???댁뼱吏?꾨줉 ?쒓컙 寃쎄낵???대㈃??蹂?붾? ?섑??대뒗 遺?쒕윭???꾪솚(Transition)???ъ슜?섏꽭??
+4. [留ㅼ슦 以묒슂] 蹂몃Ц??留덉?留?臾몃떒 ?앹뿉??諛섎뱶???ㅼ쓬 梨뺥꽣濡??먯뿰?ㅻ읇寃??섏뼱媛??1~2臾몄옣??'?곌껐 臾몄옣(Transition Sentence)'???묒꽦?섏꽭??
+   - ?? 留덉?留?梨뺥꽣??寃쎌슦???쒖쇅?⑸땲??
+   - "?ㅼ쓬 ?μ뿉?쒕뒗 ~??????댁빞湲고븯寃좊떎" ?앹쓽 吏곸꽕?곸씤 ?쒗쁽 ??? ?꾩옱 梨뺥꽣??寃쏀뿕???대뼸寃??ㅼ쓬 梨뺥꽣??諛묎굅由꾩씠 ?섏뿀?붿? ?뚯꽕泥섎읆 遺?쒕읇寃??붿떆?섏꽭??
+
+[?뷀뀒??利앺룺 ?쒖빟 (Personal Detail Amplifier)]
+- ?쒓났??'怨좎쑀紐낆궗 由ъ뒪??Personal Details)' 以???梨뺥꽣? 留λ씫???용뒗 '?대쫫', '?μ냼', '議곗쭅', '?ш굔'??**理쒖냼 2~3媛??댁긽** 蹂몃Ц??援ъ껜?곸쑝濡??ы븿?섏꽭??
+- "移쒓뎄?ㅺ낵 諛붾떎瑜?媛붾떎" ???"泥좎닔? 湲곗감瑜??怨?媛뺣쫱 諛붾떎瑜?蹂대윭 媛붾떎"泥섎읆 ?ъ떎 湲곕컲??援ъ껜??紐낆궗瑜??곗꽑?섏꽭?? (?? ?녿뒗 ?ъ떎???덈줈 吏?대궡吏 留?寃?
+
+[異쒕젰 ?뺤떇 ?쒗븳 (JSON)]
+?ㅼ쓬 ?뺥깭??JSON??諛섑솚?댁빞 ?⑸땲??
 {{
-  "content": "마크다운 없이 작성된 순수 본문 텍스트 (단락은 \\n\\n 로 구분). 연결 문장도 이 본문 마지막에 포함되어야 함.",
-  "quote": "이 챕터 본연의 감정과 핵심 메시지를 관통하는 1~2줄의 짧고 인상적인 문장 (연결 문장을 여기에 쓰지 마세요)"
+  "content": "留덊겕?ㅼ슫 ?놁씠 ?묒꽦???쒖닔 蹂몃Ц ?띿뒪??(?⑤씫? \\n\\n 濡?援щ텇). ?곌껐 臾몄옣????蹂몃Ц 留덉?留됱뿉 ?ы븿?섏뼱????",
+  "quote": "??梨뺥꽣 蹂몄뿰??媛먯젙怨??듭떖 硫붿떆吏瑜?愿?듯븯??1~2以꾩쓽 吏㏐퀬 ?몄긽?곸씤 臾몄옣 (?곌껐 臾몄옣???ш린???곗? 留덉꽭??"
 }}
 """
-        next_chap_str = f"- 다음 챕터 제목: {next_chapter.chapter_title}\n- 다음 챕터 주제: {CHAPTER_ROLES.get(next_chapter.chapter_type, dict()).get('theme', '')}" if next_chapter else "- 마지막 챕터입니다. (다음 챕터로 연결하는 transition 불필요, 깊은 여운으로 마무리)"
+        next_chap_str = f"- ?ㅼ쓬 梨뺥꽣 ?쒕ぉ: {next_chapter.chapter_title}\n- ?ㅼ쓬 梨뺥꽣 二쇱젣: {CHAPTER_ROLES.get(next_chapter.chapter_type, dict()).get('theme', '')}" if next_chapter else "- 留덉?留?梨뺥꽣?낅땲?? (?ㅼ쓬 梨뺥꽣濡??곌껐?섎뒗 transition 遺덊븘?? 源딆? ?ъ슫?쇰줈 留덈Т由?"
 
 
-        
-        user_prompt = f"""[현재 챕터 정보]
-- 번호/유형: Chapter {chapter.chapter_num} ({chapter.chapter_type})
-- 제목: {chapter.chapter_title}
 
-[다음 챕터 예고 (Transition 연결용)]
+        user_prompt = f"""[?꾩옱 梨뺥꽣 ?뺣낫]
+- 踰덊샇/?좏삎: Chapter {chapter.chapter_num} ({chapter.chapter_type})
+- ?쒕ぉ: {chapter.chapter_title}
+
+[?ㅼ쓬 梨뺥꽣 ?덇퀬 (Transition ?곌껐??]
 {next_chap_str}
 
-[전체 고유명사 풀 (Personal Details)]
+[?꾩껜 怨좎쑀紐낆궗 ? (Personal Details)]
 {json.dumps(personal_details, ensure_ascii=False, indent=2)}
 
-[이 챕터의 Scene 구조]
+[??梨뺥꽣??Scene 援ъ“]
 {json.dumps(scenes_json, ensure_ascii=False, indent=2)}
 
-[관련 추가 문맥 데이터]
+[愿??異붽? 臾몃㎘ ?곗씠??
 {additional_context}
 
-위 지침을 준수하여 이 챕터의 'content'와 'quote'를 JSON으로 작성해 주세요.
+??吏移⑥쓣 以?섑븯????梨뺥꽣??'content'? 'quote'瑜?JSON?쇰줈 ?묒꽦??二쇱꽭??
 """
 
         try:
@@ -303,7 +466,7 @@ class AutobiographyService:
             return result
         except Exception as e:
             print(f"Error generating chapter {chapter.chapter_num}: {e}")
-            return {"content": "내용을 생성하는 중 오류가 발생했습니다.", "quote": ""}
+            return {"content": "?댁슜???앹꽦?섎뒗 以??ㅻ쪟媛 諛쒖깮?덉뒿?덈떎.", "quote": ""}
 
 autobiography_service = AutobiographyService()
 

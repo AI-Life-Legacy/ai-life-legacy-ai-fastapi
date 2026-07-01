@@ -129,15 +129,27 @@ async def generate_avatar_response(
     else:
         print(f"[Chat] Mode: {mode}, Author: {final_user_id}, Session: {final_session_id}")
     
-    # 1. 유저의 전체 자서전 기억 로드 (Long-Context Full Memory 방식)
+    # 1. 유저의 전체 자서전 기억 로드 (Long-Context vs RAG Hybrid 방식)
     context_text = ""
     context_used = False
     
     try:
         # anonymous, unknown 또는 비어있는 user_id는 RAG 검색을 건너뜀
         if final_user_id not in [None, "", "anonymous", "unknown"]:
-            # 유저의 전체 자서전 데이터를 통째로 로드하여 LLM의 Context Window에 주입
-            context_text = await retrieve_full_user_memory(final_user_id)
+            # 유저의 전체 자서전 데이터를 로드
+            full_memory = await retrieve_full_user_memory(final_user_id)
+            
+            # 한글/영어 기준 공백 포함 약 8000자(대략 3,000~4,000 토큰)를 임계값으로 설정
+            # 전체 메모리가 작을 때는 모든 문맥을 다 제공하여 완벽한 기억을 유지 (Long-Context)
+            if len(full_memory.strip()) <= 8000:
+                context_text = full_memory
+                print(f"[RAG] Full Memory Used for user {final_user_id} (Length: {len(full_memory)})")
+            else:
+                # 메모리가 클 경우, 현재 질문과 가장 관련 있는 Top 5 청크만 RAG 유사도 검색으로 추출 (Hybrid-RAG)
+                results = await search_context(final_user_id, user_message, n_results=5)
+                context_text = "\n\n".join([doc.page_content for doc, _ in results])
+                print(f"[RAG] Similarity Search (Top 5) Used for user {final_user_id} due to large memory size (Full Length: {len(full_memory)})")
+                
             context_used = len(context_text.strip()) > 0
     except Exception as e:
         print(f"Warning: Failed to retrieve RAG context for user {final_user_id}: {e}")
