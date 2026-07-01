@@ -10,9 +10,13 @@ app = FastAPI(title="AI Life Legacy Server")
 
 # Ensure required directories exist
 GENERATED_PDFS_DIR = BASE_DIR / "generated_pdfs"
+STORAGE_DATA_DIR = BASE_DIR / "storage" / "data"
+STORAGE_ASSETS_DIR = BASE_DIR / "storage" / "assets"
 CACHE_DIR = BASE_DIR / ".cache" / "autobiography"
 
 os.makedirs(GENERATED_PDFS_DIR, exist_ok=True)
+os.makedirs(STORAGE_DATA_DIR, exist_ok=True)
+os.makedirs(STORAGE_ASSETS_DIR, exist_ok=True)
 os.makedirs(CACHE_DIR, exist_ok=True)
 
 # Mount static files
@@ -20,6 +24,16 @@ app.mount(
     "/generated-pdfs",
     StaticFiles(directory=str(GENERATED_PDFS_DIR)),
     name="generated_pdfs",
+)
+app.mount(
+    "/storage/data",
+    StaticFiles(directory=str(STORAGE_DATA_DIR)),
+    name="storage_data",
+)
+app.mount(
+    "/storage/assets",
+    StaticFiles(directory=str(STORAGE_ASSETS_DIR)),
+    name="storage_assets",
 )
 
 # v1 prefix router
