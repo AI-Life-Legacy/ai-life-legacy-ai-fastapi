@@ -38,6 +38,7 @@ class PdfService:
 
     THEME_STYLES = {
         "classic": {
+            "theme_class": "classic",
             "font_family": "'Malgun Gothic', 'Noto Sans KR', serif",
             "bg_color": "#fbfaf7",
             "text_color": "#24211f",
@@ -46,6 +47,7 @@ class PdfService:
             "card_bg": "#ffffff",
         },
         "modern": {
+            "theme_class": "modern",
             "font_family": "'Malgun Gothic', 'Noto Sans KR', sans-serif",
             "bg_color": "#f8fafc",
             "text_color": "#172033",
@@ -54,6 +56,7 @@ class PdfService:
             "card_bg": "#ffffff",
         },
         "warm": {
+            "theme_class": "warm",
             "font_family": "'Malgun Gothic', 'Noto Sans KR', serif",
             "bg_color": "#fff8f1",
             "text_color": "#35261f",
@@ -242,7 +245,8 @@ class PdfService:
         self.ensure_default_assets()
         raw_data = self.parse_markdown_content(markdown_content)
         spread_data = self.paginate_to_spreads(raw_data)
-        style = self.THEME_STYLES.get(theme, self.THEME_STYLES["classic"])
+        normalized_theme = theme if theme in self.THEME_STYLES else "classic"
+        style = self.THEME_STYLES.get(normalized_theme, self.THEME_STYLES["classic"])
 
         html_template = """
 <!DOCTYPE html>
@@ -434,9 +438,77 @@ class PdfService:
       color: {{ style.muted_color }};
       background: {{ style.card_bg }};
     }
+    .pdf-theme-warm .spread {
+      background:
+        radial-gradient(circle at 18mm 22mm, rgba(196,106,58,0.13), transparent 28mm),
+        linear-gradient(90deg, #fff8f1 0%, #fffdf9 48%, #fff8f1 100%);
+    }
+    .pdf-theme-warm .opener {
+      border: 10mm solid #fffdf9;
+      box-sizing: border-box;
+      box-shadow: inset 0 0 0 1.2pt rgba(154,90,47,0.28);
+    }
+    .pdf-theme-warm .opener-image {
+      top: 10mm;
+      right: 10mm;
+      bottom: 10mm;
+      left: 10mm;
+      width: calc(100% - 20mm);
+      height: calc(100% - 20mm);
+      border-radius: 5mm;
+    }
+    .pdf-theme-warm .chapter-image {
+      border-radius: 5mm;
+      width: 92mm;
+      margin: 0 0 9mm 0;
+      border: 0;
+      box-shadow: 0 5mm 12mm rgba(93,58,38,0.14);
+    }
+    .pdf-theme-modern .spread::after {
+      width: 0;
+      background: transparent;
+    }
+    .pdf-theme-modern .page.left {
+      padding: 18mm 22mm 18mm 18mm;
+    }
+    .pdf-theme-modern .page.right {
+      padding: 18mm 18mm 18mm 22mm;
+    }
+    .pdf-theme-modern .header {
+      border-bottom: 1.2pt solid {{ style.accent_color }};
+      text-transform: uppercase;
+      letter-spacing: 2px;
+    }
+    .pdf-theme-modern .opener {
+      background: linear-gradient(135deg, {{ style.accent_color }} 0%, #172033 100%);
+    }
+    .pdf-theme-modern .opener-image {
+      left: 58mm;
+      width: calc(100% - 58mm);
+      opacity: 0.46;
+      filter: grayscale(1);
+    }
+    .pdf-theme-modern .opener-copy {
+      left: 18mm;
+      bottom: 24mm;
+      width: 78mm;
+    }
+    .pdf-theme-modern .chapter-kicker,
+    .pdf-theme-modern .chapter-subtitle,
+    .pdf-theme-modern .chapter-title {
+      color: white;
+    }
+    .pdf-theme-modern .chapter-rule {
+      background: white;
+      width: 34mm;
+    }
+    .pdf-theme-modern p {
+      font-size: 10.2pt;
+      line-height: 1.78;
+    }
   </style>
 </head>
-<body>
+<body class="pdf-theme-{{ style.theme_class }}">
 {% for spread in spreads %}
   <div class="spread">
     <div class="page left">
