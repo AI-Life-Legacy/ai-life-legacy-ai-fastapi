@@ -22,6 +22,8 @@ class AutobiographyRequest(BaseModel):
     personalization: Optional[Dict[str, Any]] = None
     force: bool = False
     theme: Optional[str] = "classic"
+    templateId: Optional[str] = None
+    template_id: Optional[str] = None
     generate_illustrations: bool = False
 
 class AutobiographyResponse(BaseModel):

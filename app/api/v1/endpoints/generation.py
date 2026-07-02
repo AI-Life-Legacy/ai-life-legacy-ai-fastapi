@@ -17,6 +17,12 @@ from openai import AuthenticationError, PermissionDeniedError, RateLimitError
 
 router = APIRouter()
 
+def normalize_pdf_template(value: Optional[str]) -> str:
+    template = (value or "classic").strip().lower()
+    if template in {"classic", "warm", "modern"}:
+        return template
+    return "classic"
+
 @router.post("/question", response_model=QuestionResponse)
 async def create_follow_up_question(request: QuestionRequest):
     try:
@@ -61,6 +67,10 @@ async def create_autobiography(request: AutobiographyRequest):
         if not user_id:
             raise HTTPException(status_code=400, detail="userId or user_id is required.")
 
+        selected_template = normalize_pdf_template(
+            request.template_id or request.templateId or request.theme
+        )
+
         # Convert chapters to answers if present
         if request.chapters and not request.answers:
             flat_answers = []
@@ -87,7 +97,8 @@ async def create_autobiography(request: AutobiographyRequest):
             {
                 "answers": request.answers,
                 "personalization": request.personalization or {},
-                "theme": request.theme,
+                "theme": selected_template,
+                "template": selected_template,
             },
             sort_keys=True,
             ensure_ascii=False,
@@ -138,7 +149,7 @@ async def create_autobiography(request: AutobiographyRequest):
         # 4. Generate Markdown content using request answers (passing theme & generate_illustrations)
         md_content = await autobiography_service.generate_autobiography_memoir(
             user_id, user_name, retrieved_context=retrieved_context, answers=request.answers,
-            theme=request.theme, generate_illustrations=request.generate_illustrations,
+            theme=selected_template, generate_illustrations=request.generate_illustrations,
             personalization=request.personalization
         )
 
@@ -151,7 +162,7 @@ async def create_autobiography(request: AutobiographyRequest):
             f.write(md_content)
 
         # 6. Generate PDF from MarkDown in generated_pdfs with selected theme
-        _, page_count = pdf_service.generate_premium_pdf(md_content, str(pdf_file_path), theme=request.theme)
+        _, page_count = pdf_service.generate_premium_pdf(md_content, str(pdf_file_path), theme=selected_template)
 
         # 濡쒓렇 異쒕젰 ?붽뎄?ы빆 (pdf path)
         print(f"[LOG] output pdf path: {pdf_file_path}")
