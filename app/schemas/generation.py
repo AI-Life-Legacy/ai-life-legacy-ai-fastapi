@@ -1,19 +1,37 @@
-from pydantic import BaseModel
-from typing import List
+﻿from pydantic import BaseModel
+from typing import List, Dict, Any, Optional
 
 class QuestionRequest(BaseModel):
-    originalQuestion: str
-    userAnswer: str
+    user_id: Optional[str] = None
+    toc_id: int
+    current_answer: str
+    chat_history: List[dict]
 
 class QuestionResponse(BaseModel):
     question: str
 
-class QaPair(BaseModel):
-    question: str
-    answer: str
-
 class AutobiographyRequest(BaseModel):
-    pairs: List[QaPair]
+    userId: Optional[str] = None
+    user_id: Optional[str] = None
+    userName: Optional[str] = "사용자"
+    user_name: Optional[str] = None
+    answers: Optional[List[Any]] = None
+    chapters: Optional[List[Any]] = None
+    toc: Optional[List[Any]] = None
+    questions: Optional[List[Any]] = None
+    personalization: Optional[Dict[str, Any]] = None
+    force: bool = False
+    theme: Optional[str] = "classic"
+    templateId: Optional[str] = None
+    template_id: Optional[str] = None
+    generate_illustrations: bool = False
 
 class AutobiographyResponse(BaseModel):
-    content: str
+    status: str
+    pdf_url: str
+    page_count: int
+    cached: bool = False
+    markdown: Optional[str] = None
+    markdown_url: Optional[str] = None
+
+

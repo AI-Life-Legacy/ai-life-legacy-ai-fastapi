@@ -4,7 +4,7 @@ from typing import Dict, Any, List, Optional
 class RagSyncRequest(BaseModel):
     userId: str
     text: str
-    metadata: Dict[str, Any]
+    metadata: Dict[str, Any] = {}
 
 class RagSearchRequest(BaseModel):
     userId: str

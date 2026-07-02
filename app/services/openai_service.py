@@ -1,16 +1,23 @@
 from openai import AsyncOpenAI
 from app.core.config import settings
 from app.prompts.templates import PROMPTS
+from app.services.vector_store import search_context, retrieve_full_user_memory
 import json
+from typing import Optional
+
 
 client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
 
 async def classify_user_case(intro_text: str) -> str:
+    # 데이터가 너무 적을 경우(공백 포함 5자 미만) 디폴트 case1 반환
+    if not intro_text or len(intro_text.strip()) < 5:
+        return json.dumps({"case": "case1", "reasoning": "Input too short, defaulted to case1"})
+
     # 사용자 프롬프트에 데이터를 주입
     prompt_content = PROMPTS["CASE_CLASSIFICATION_USER"].format(user_intro_text=intro_text)
     
     response = await client.chat.completions.create(
-        model="gpt-4o-mini",
+        model=settings.OPENAI_EXTRACT_MODEL,
         messages=[
             {"role": "user", "content": prompt_content}
         ],
@@ -28,14 +35,33 @@ async def classify_user_case(intro_text: str) -> str:
     
     return json.dumps({"case": content, "reasoning": "Classified by AI"})
 
-async def generate_follow_up_question(original_question: str, user_answer: str) -> str:
-    prompt_content = PROMPTS["QUESTION_GENERATION_USER"].format(
-        question=original_question, 
-        answer=user_answer
-    )
+async def generate_follow_up_question(user_id: str, current_answer: str, chat_history: list) -> str:
+    # 1. RAG: 관련 문맥 검색 (최근 답변 위주로)
+    results = await search_context(user_id, current_answer, n_results=3)
+    context_text = "\n".join([f"- {doc.page_content}" for doc, _ in results])
+    if not context_text:
+        context_text = "관련된 과거 기록이 없습니다."
+
+    # 2. 대화 내역 포맷팅
+    history_text = "\n".join([f"{m['role']}: {m['content']}" for m in chat_history])
+
+    # 3. 프롬프트 구성
+    prompt_content = f"""
+    [대화 내역]
+    {history_text}
+    
+    [최근 답변]
+    {current_answer}
+    
+    [참고 문맥]
+    {context_text}
+    
+    위의 대화 내역과 최근 답변, 그리고 참고 문맥을 바탕으로 자연스러운 꼬리 질문을 하나 만들어줘.
+    결과물에는 따옴표나 추가 설명 없이 오직 질문만 작성해줘.
+    """
 
     response = await client.chat.completions.create(
-        model="gpt-4o-mini",
+        model=settings.OPENAI_QUESTION_MODEL,
         messages=[
             {"role": "user", "content": prompt_content}
         ],
@@ -43,26 +69,137 @@ async def generate_follow_up_question(original_question: str, user_answer: str) 
     )
     return response.choices[0].message.content.strip()
 
-async def combine_answers_to_autobiography(pairs: list) -> str:
-    # pairs 리스트에서 첫 번째와 두 번째 질문/답변을 추출한다고 가정 (명세상 question1, question2 등)
-    # 리스트 길이가 2 이상이어야 함. 안전하게 처리.
-    q1 = pairs[0].question if len(pairs) > 0 else ""
-    a1 = pairs[0].answer if len(pairs) > 0 else ""
-    q2 = pairs[1].question if len(pairs) > 1 else ""
-    a2 = pairs[1].answer if len(pairs) > 1 else ""
+def map_role_id(role_id: Optional[str], role: Optional[str]) -> str:
+    r_id = role_id.strip() if role_id else ""
+    r_name = role.strip() if role else ""
     
-    # 더 많은 질문이 있을 경우 어떻게 할지 명세에는 없으므로, 일단 2개만 처리하거나 반복문으로 합쳐야 함.
-    # 현재 `combine.prompt.ts`는 명시적으로 2개의 질문/답변을 인자로 받음.
+    mapping = {
+        "curator": "curator",
+        "큐레이터": "curator",
+        "father": "father",
+        "아버지": "father",
+        "mother": "mother",
+        "어머니": "mother",
+        "self": "self",
+        "self": "self",
+        "나": "self",
+        "sister": "sister",
+        "누나": "sister",
+        "언니": "sister",
+        "여동생": "sister",
+        "brother": "brother",
+        "형": "brother",
+        "오빠": "brother",
+        "남동생": "brother"
+    }
     
-    prompt_content = PROMPTS["AUTOBIOGRAPHY_COMBINATION_USER"].format(
-        q1=q1, a1=a1, q2=q2, a2=a2
-    )
+    if r_id:
+        mapped = mapping.get(r_id.lower())
+        if mapped:
+            return mapped
+        if r_id.lower() in ["curator", "father", "mother", "self", "sister", "brother"]:
+            return r_id.lower()
+            
+    if r_name:
+        mapped = mapping.get(r_name.lower())
+        if mapped:
+            return mapped
+        if r_name.lower() in ["curator", "father", "mother", "self", "sister", "brother"]:
+            return r_name.lower()
+            
+    return "curator"
 
+async def generate_avatar_response(
+    user_id: Optional[str] = None,
+    user_message: str = "",
+    role_id: Optional[str] = None,
+    session_id: Optional[str] = None,
+    role: Optional[str] = None,
+    viewer_id: Optional[str] = None,
+    mode: str = "writer"
+) -> dict:
+    import uuid
+    
+    final_user_id = user_id or "anonymous"
+    final_role_id = map_role_id(role_id, role)
+    final_session_id = session_id or f"session_{uuid.uuid4().hex[:12]}"
+    
+    if viewer_id:
+        print(f"[Chat] Mode: {mode}, Author: {final_user_id}, Viewer: {viewer_id}, Session: {final_session_id}")
+    else:
+        print(f"[Chat] Mode: {mode}, Author: {final_user_id}, Session: {final_session_id}")
+    
+    # 1. 유저의 전체 자서전 기억 로드 (Long-Context vs RAG Hybrid 방식)
+    context_text = ""
+    context_used = False
+    
+    try:
+        # anonymous, unknown 또는 비어있는 user_id는 RAG 검색을 건너뜀
+        if final_user_id not in [None, "", "anonymous", "unknown"]:
+            # 유저의 전체 자서전 데이터를 로드
+            full_memory = await retrieve_full_user_memory(final_user_id)
+            
+            # 한글/영어 기준 공백 포함 약 8000자(대략 3,000~4,000 토큰)를 임계값으로 설정
+            # 전체 메모리가 작을 때는 모든 문맥을 다 제공하여 완벽한 기억을 유지 (Long-Context)
+            if len(full_memory.strip()) <= 8000:
+                context_text = full_memory
+                print(f"[RAG] Full Memory Used for user {final_user_id} (Length: {len(full_memory)})")
+            else:
+                # 메모리가 클 경우, 현재 질문과 가장 관련 있는 Top 5 청크만 RAG 유사도 검색으로 추출 (Hybrid-RAG)
+                results = await search_context(final_user_id, user_message, n_results=5)
+                context_text = "\n\n".join([doc.page_content for doc, _ in results])
+                print(f"[RAG] Similarity Search (Top 5) Used for user {final_user_id} due to large memory size (Full Length: {len(full_memory)})")
+                
+            context_used = len(context_text.strip()) > 0
+    except Exception as e:
+        print(f"Warning: Failed to retrieve RAG context for user {final_user_id}: {e}")
+        context_text = ""
+        context_used = False
+
+    if not context_text:
+        context_text = "제공된 과거 기억이나 자서전 기록이 없습니다. 일상적인 대화 어조로 성심껏 응답하세요."
+
+    # 2. 역할 설정 및 페르소나 선택
+    prompt_key = f"AVATAR_SYSTEM_{final_role_id.upper()}"
+    system_prompt = PROMPTS.get(prompt_key, PROMPTS["AVATAR_SYSTEM_CURATOR"])
+
+    # 3. 프롬프트 구성
+    prompt_content = PROMPTS["AVATAR_USER_PROMPT"].format(
+        context=context_text,
+        user_message=user_message
+    )
+    
     response = await client.chat.completions.create(
-        model="gpt-4o-mini",
+        model=settings.OPENAI_CHAT_MODEL,
         messages=[
+            {"role": "system", "content": system_prompt},
             {"role": "user", "content": prompt_content}
         ],
         temperature=0.7
     )
-    return response.choices[0].message.content.strip()
+    answer = response.choices[0].message.content.strip()
+    
+    return {
+        "answer": answer,
+        "session_id": final_session_id,
+        "role_id": final_role_id,
+        "context_used": context_used
+    }
+
+async def generate_voice_response(text: str, role_id: str):
+    # OpenAI TTS 사용
+    # role_id에 따라 목소리 매핑
+    voices = {
+        "father": "echo",
+        "mother": "nova",
+        "curator": "onyx",
+        "friend": "alloy"
+    }
+    voice = voices.get(role_id, "alloy")
+    
+    response = await client.audio.speech.create(
+        model="tts-1",
+        voice=voice,
+        input=text
+    )
+    return response.content
