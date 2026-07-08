@@ -161,6 +161,7 @@ class PdfService:
 
             mood = mood_match.group(1).strip() if mood_match else self.detect_mood(chapter_title, body)
             quote = quote_match.group(1).strip() if quote_match else ""
+            is_custom_image = image_match is not None
             image_uri = self.to_file_uri(image_match.group(1).strip()) if image_match else self.to_file_uri(MOOD_ASSETS.get(mood, MOOD_ASSETS["family"]))
 
             body = re.sub(r"<!-- MOOD:.*?-->", "", body).strip()
@@ -174,6 +175,7 @@ class PdfService:
                     "paragraphs": paragraphs,
                     "image": image_uri,
                     "has_image": self.image_exists(image_uri),
+                    "is_custom_image": is_custom_image,
                     "title_size": self.get_title_size(chapter_title),
                     "title_theme": "dark" if self.get_image_luminance(image_uri) > 115 else "light",
                     "mood": mood,
@@ -199,6 +201,7 @@ class PdfService:
                     "title_theme": chapter["title_theme"],
                     "image": chapter["image"],
                     "has_image": chapter["has_image"],
+                    "is_custom_image": chapter["is_custom_image"],
                     "right_paragraphs": [first_para] if first_para else [],
                     "quote": chapter["quote"],
                 }
@@ -222,6 +225,7 @@ class PdfService:
                         "chapter_title": chapter["chapter_title"],
                         "image": chapter["image"],
                         "has_image": chapter["has_image"],
+                        "show_text_image": not chapter["is_custom_image"],
                         "left_paragraphs": collected[:midpoint],
                         "right_paragraphs": collected[midpoint:],
                     }
@@ -235,6 +239,7 @@ class PdfService:
                         "chapter_title": chapter["chapter_title"],
                         "image": chapter["image"],
                         "has_image": chapter["has_image"],
+                        "is_custom_image": chapter["is_custom_image"],
                         "quote": chapter["quote"],
                     }
                 )
@@ -359,6 +364,20 @@ class PdfService:
       bottom: 30mm;
       width: 108mm;
       z-index: 2;
+    }
+    .opener.custom-illustration .opener-image {
+      filter: saturate(0.94) contrast(1.02);
+    }
+    .opener.custom-illustration .opener-copy {
+      width: 94mm;
+      padding: 10mm;
+      border-left: 3pt solid {{ style.accent_color }};
+      background: rgba(255,255,255,0.80);
+      backdrop-filter: blur(2px);
+    }
+    .theme-light.custom-illustration .opener-copy {
+      background: rgba(20,20,20,0.54);
+      border-left-color: rgba(255,255,255,0.86);
     }
     .chapter-kicker {
       color: {{ style.accent_color }};
@@ -513,7 +532,7 @@ class PdfService:
   <div class="spread">
     <div class="page left">
       {% if spread.type == "opener" %}
-        <div class="opener theme-{{ spread.title_theme }}">
+        <div class="opener theme-{{ spread.title_theme }}{% if spread.is_custom_image %} custom-illustration{% endif %}">
           {% if spread.has_image %}
             <img class="opener-image" src="{{ spread.image }}" alt="">
           {% endif %}
@@ -532,7 +551,7 @@ class PdfService:
         </div>
       {% else %}
         <div class="header"><span>{{ title }}</span><span></span></div>
-        {% if spread.has_image %}<img class="chapter-image" src="{{ spread.image }}" alt="">{% endif %}
+        {% if spread.has_image and spread.show_text_image %}<img class="chapter-image" src="{{ spread.image }}" alt="">{% endif %}
         {% for p in spread.left_paragraphs %}
           <p>{{ p }}</p>
         {% endfor %}

@@ -5,6 +5,7 @@ from app.services.timeline_service import timeline_service
 from app.services.scene_builder import scene_builder
 import os
 import json
+import hashlib
 
 CHAPTER_ROLES = {
     "childhood": {
@@ -165,19 +166,24 @@ class AutobiographyService:
 
     async def _generate_dalle_illustration(self, user_id: str, chapter) -> str | None:
         """
-        OpenAI DALL-E 3瑜??몄텧?섏뿬 梨뺥꽣 ?댁슜??留욌뒗 媛먯꽦?곸씤 ?섏콈?????쏀솕瑜??숈쟻?쇰줈 ?앹꽦?섍퀬 濡쒖뺄????ν빀?덈떎.
+        Generate a safe memoir-style illustration for a chapter and store it on the AI server.
         """
-        # ???뺣낫 痍⑦빀?섏뿬 ?꾨＼?꾪듃 ?묒꽦
         scene_summaries = []
         for s in chapter.scenes:
             scene_summaries.append(f"- {s.title}: {s.setting or ''} {s.resolution or ''}")
         scenes_text = "\n".join(scene_summaries)
 
-        prompt = f"""A soft, artistic, minimalist watercolor illustration representing the theme of: "{chapter.chapter_title}".
-Context details:
+        prompt = f"""Create a warm memoir illustration for a Korean autobiography chapter titled "{chapter.chapter_title}".
+
+Chapter context:
 {scenes_text}
 
-Warm pastel colors, peaceful and nostalgic storybook art style, clean edges, high quality, no text or signatures."""
+Style and safety requirements:
+- Make it look like an editorial watercolor / soft film-tone illustration, not a real photograph.
+- Do not depict a specific identifiable real person or celebrity.
+- Prefer places, objects, light, seasons, rooms, streets, desks, letters, albums, and symbolic family atmosphere.
+- No readable text, no logos, no signatures, no watermarks.
+- High quality, calm, nostalgic, suitable for a printed life-story PDF."""
 
         try:
             print(f"[DALL-E] Generating dynamic illustration for Chapter {chapter.chapter_num}...")
@@ -185,21 +191,37 @@ Warm pastel colors, peaceful and nostalgic storybook art style, clean edges, hig
                 model="dall-e-3",
                 prompt=prompt,
                 n=1,
-                size="1024x1024"
+                size="1024x1024",
             )
             image_url = response.data[0].url
 
             import httpx
             from pathlib import Path
+            from PIL import Image, ImageEnhance
             async with httpx.AsyncClient() as http_client:
                 img_resp = await http_client.get(image_url)
                 if img_resp.status_code == 200:
-                    img_dir = Path(settings.CHROMA_DB_PATH).parent / "generated_images"
+                    img_dir = Path(settings.CHROMA_DB_PATH).parent / "assets" / "generated_illustrations"
                     os.makedirs(img_dir, exist_ok=True)
-                    img_filename = f"illustration_{user_id}_{chapter.chapter_num}.png"
+                    safe_user_id = hashlib.sha1(user_id.encode("utf-8")).hexdigest()[:12]
+                    img_filename = f"illustration_{safe_user_id}_{chapter.chapter_num}.jpg"
                     img_path = img_dir / img_filename
-                    with open(img_path, "wb") as f:
+
+                    raw_path = img_dir / f"raw_{safe_user_id}_{chapter.chapter_num}.png"
+                    with open(raw_path, "wb") as f:
                         f.write(img_resp.content)
+
+                    with Image.open(raw_path) as image:
+                        resample_filter = getattr(getattr(Image, "Resampling", Image), "LANCZOS")
+                        processed = image.convert("RGB").resize((1600, 1100), resample_filter)
+                        processed = ImageEnhance.Contrast(processed).enhance(1.04)
+                        processed = ImageEnhance.Sharpness(processed).enhance(1.08)
+                        processed.save(img_path, "JPEG", quality=88, optimize=True)
+
+                    try:
+                        raw_path.unlink()
+                    except OSError:
+                        pass
 
                     local_uri = f"file:///{img_path.as_posix()}"
                     print(f"[DALL-E] Dynamic illustration saved to: {local_uri}")

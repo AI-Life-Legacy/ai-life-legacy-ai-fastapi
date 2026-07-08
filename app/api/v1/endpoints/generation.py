@@ -99,6 +99,7 @@ async def create_autobiography(request: AutobiographyRequest):
                 "personalization": request.personalization or {},
                 "theme": selected_template,
                 "template": selected_template,
+                "generate_illustrations": request.generate_illustrations,
             },
             sort_keys=True,
             ensure_ascii=False,

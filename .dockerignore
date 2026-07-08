@@ -1,0 +1,11 @@
+.venv
+__pycache__
+.cache
+.env
+.env.*
+.git
+.idea
+storage
+generated_pdfs
+*.pyc
+Dockerfile
