@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     OPENAI_QUESTION_MODEL: str = "gpt-4.1-mini"
     OPENAI_EXTRACT_MODEL: str = "gpt-4.1-mini"
     OPENAI_AUTOBIOGRAPHY_MODEL: str = "gpt-4o"
+    OPENAI_IMAGE_MODEL: str = "gpt-image-2"
     OPENAI_ORG_ID: str | None = None
     PORT: int = 8000
     ENVIRONMENT: str = "development"

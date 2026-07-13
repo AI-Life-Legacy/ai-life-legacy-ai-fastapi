@@ -3,9 +3,11 @@ from app.core.config import settings
 from app.services.vector_store import retrieve_all_user_contexts, retrieve_chapter_contexts
 from app.services.timeline_service import timeline_service
 from app.services.scene_builder import scene_builder
+import asyncio
 import os
 import json
 import hashlib
+import base64
 
 CHAPTER_ROLES = {
     "childhood": {
@@ -186,48 +188,55 @@ Style and safety requirements:
 - High quality, calm, nostalgic, suitable for a printed life-story PDF."""
 
         try:
-            print(f"[DALL-E] Generating dynamic illustration for Chapter {chapter.chapter_num}...")
+            print(f"[Image] Generating dynamic illustration for Chapter {chapter.chapter_num}...")
             response = await self.client.images.generate(
-                model="dall-e-3",
+                model=settings.OPENAI_IMAGE_MODEL,
                 prompt=prompt,
                 n=1,
-                size="1024x1024",
             )
-            image_url = response.data[0].url
+            image_data = response.data[0]
 
             import httpx
             from pathlib import Path
             from PIL import Image, ImageEnhance
-            async with httpx.AsyncClient() as http_client:
-                img_resp = await http_client.get(image_url)
-                if img_resp.status_code == 200:
-                    img_dir = Path(settings.CHROMA_DB_PATH).parent / "assets" / "generated_illustrations"
-                    os.makedirs(img_dir, exist_ok=True)
-                    safe_user_id = hashlib.sha1(user_id.encode("utf-8")).hexdigest()[:12]
-                    img_filename = f"illustration_{safe_user_id}_{chapter.chapter_num}.jpg"
-                    img_path = img_dir / img_filename
 
-                    raw_path = img_dir / f"raw_{safe_user_id}_{chapter.chapter_num}.png"
-                    with open(raw_path, "wb") as f:
-                        f.write(img_resp.content)
+            if getattr(image_data, "b64_json", None):
+                image_bytes = base64.b64decode(image_data.b64_json)
+            elif getattr(image_data, "url", None):
+                async with httpx.AsyncClient() as http_client:
+                    img_resp = await http_client.get(image_data.url)
+                    img_resp.raise_for_status()
+                    image_bytes = img_resp.content
+            else:
+                raise ValueError("Image generation returned no image data")
 
-                    with Image.open(raw_path) as image:
-                        resample_filter = getattr(getattr(Image, "Resampling", Image), "LANCZOS")
-                        processed = image.convert("RGB").resize((1600, 1100), resample_filter)
-                        processed = ImageEnhance.Contrast(processed).enhance(1.04)
-                        processed = ImageEnhance.Sharpness(processed).enhance(1.08)
-                        processed.save(img_path, "JPEG", quality=88, optimize=True)
+            img_dir = Path(settings.CHROMA_DB_PATH).parent / "assets" / "generated_illustrations"
+            os.makedirs(img_dir, exist_ok=True)
+            safe_user_id = hashlib.sha1(user_id.encode("utf-8")).hexdigest()[:12]
+            img_filename = f"illustration_{safe_user_id}_{chapter.chapter_num}.jpg"
+            img_path = img_dir / img_filename
 
-                    try:
-                        raw_path.unlink()
-                    except OSError:
-                        pass
+            raw_path = img_dir / f"raw_{safe_user_id}_{chapter.chapter_num}.png"
+            with open(raw_path, "wb") as f:
+                f.write(image_bytes)
 
-                    local_uri = f"file:///{img_path.as_posix()}"
-                    print(f"[DALL-E] Dynamic illustration saved to: {local_uri}")
-                    return local_uri
+            with Image.open(raw_path) as image:
+                resample_filter = getattr(getattr(Image, "Resampling", Image), "LANCZOS")
+                processed = image.convert("RGB").resize((1600, 1100), resample_filter)
+                processed = ImageEnhance.Contrast(processed).enhance(1.04)
+                processed = ImageEnhance.Sharpness(processed).enhance(1.08)
+                processed.save(img_path, "JPEG", quality=88, optimize=True)
+
+            try:
+                raw_path.unlink()
+            except OSError:
+                pass
+
+            local_uri = f"file:///{img_path.as_posix()}"
+            print(f"[Image] Dynamic illustration saved to: {local_uri}")
+            return local_uri
         except Exception as e:
-            print(f"Warning: DALL-E generation failed for Chapter {chapter.chapter_num}: {e}")
+            print(f"Warning: image generation failed for Chapter {chapter.chapter_num}: {e}")
         return None
 
     async def generate_autobiography_memoir(
@@ -285,7 +294,7 @@ Style and safety requirements:
         self._apply_personalized_chapter_titles(chapter_data_list, personalization)
 
         # 媛?梨뺥꽣蹂꾨줈 蹂몃Ц ?앹꽦
-        full_markdown = f"# {user_name}의 자서전\n\n"
+        generated_chapters = []
 
         grouped_answers = group_answers_by_chapter(answers) if answers else {}
 
@@ -334,14 +343,33 @@ Style and safety requirements:
             chapter.generated_text = chapter_text
 
             # DALL-E ?대?吏 ?앹꽦 泥섎━
-            local_image_uri = None
-            if generate_illustrations:
-                local_image_uri = await self._generate_dalle_illustration(user_id, chapter)
+            generated_chapters.append((chapter, chapter_text, chapter_quote))
 
+        # Chapter text depends on the previous chapter, but illustrations do
+        # not. Generate only illustrations concurrently with a conservative
+        # limit so the image API is not flooded.
+        illustration_uris = [None] * len(generated_chapters)
+        if generate_illustrations:
+            illustration_semaphore = asyncio.Semaphore(2)
+
+            async def generate_illustration(index: int, chapter):
+                async with illustration_semaphore:
+                    illustration_uris[index] = await self._generate_dalle_illustration(
+                        user_id,
+                        chapter,
+                    )
+
+            await asyncio.gather(*(
+                generate_illustration(index, chapter)
+                for index, (chapter, _, _) in enumerate(generated_chapters)
+            ))
+
+        full_markdown = f"# {user_name}의 자서전\n\n"
+        for index, (chapter, chapter_text, chapter_quote) in enumerate(generated_chapters):
             full_markdown += f"## {chapter.chapter_title}\n"
             full_markdown += f"<!-- MOOD: {chapter.mood} -->\n"
-            if local_image_uri:
-                full_markdown += f"<!-- IMAGE: {local_image_uri} -->\n"
+            if illustration_uris[index]:
+                full_markdown += f"<!-- IMAGE: {illustration_uris[index]} -->\n"
             full_markdown += f"{chapter_text}\n\n"
             if chapter_quote:
                 full_markdown += f"<!-- QUOTE: {chapter_quote} -->\n\n"
