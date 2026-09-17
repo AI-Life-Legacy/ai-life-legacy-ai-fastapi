@@ -3,8 +3,9 @@ from langchain_chroma import Chroma
 from langchain_openai import OpenAIEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.documents import Document
-from app.core.config import settings
+from app.core.config import BASE_DIR, settings
 from typing import List, Dict, Tuple
+from pathlib import Path
 from starlette.concurrency import run_in_threadpool
 
 # 임베딩 모델 설정
@@ -192,7 +193,22 @@ def _retrieve_full_user_memory_sync(user_id: str) -> str:
             return raw_text.encode('utf-8', 'ignore').decode('utf-8')
     except Exception as e:
         print(f"Error in retrieve_full_user_memory: {e}")
-    return ""
+
+    return _retrieve_latest_autobiography_markdown(user_id)
+
+def _retrieve_latest_autobiography_markdown(user_id: str) -> str:
+    try:
+        storage_dir = Path(BASE_DIR) / "storage" / "data"
+        candidates = list(storage_dir.glob(f"autobiography_{user_id}_*.md"))
+        if not candidates:
+            return ""
+        latest = max(candidates, key=lambda path: path.stat().st_mtime)
+        raw_text = latest.read_text(encoding="utf-8")
+        print(f"[RAG] Loaded local autobiography markdown fallback: {latest.name}")
+        return raw_text.encode("utf-8", "ignore").decode("utf-8")
+    except Exception as e:
+        print(f"Error in local autobiography markdown fallback: {e}")
+        return ""
 
 async def retrieve_chapter_contexts(user_id: str, chapter_type: str, limit: int = 10) -> str:
     """

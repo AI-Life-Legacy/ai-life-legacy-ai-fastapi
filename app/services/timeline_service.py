@@ -44,8 +44,10 @@ class TimelineService:
   ]
 }
 """
+        limited_context = self._truncate_text(retrieved_context, 60000)
+
         user_prompt = f"""[사용자의 과거 기억 기록]
-{retrieved_context}
+{limited_context}
 
 위 기록을 분석하여 인생 사건들을 시간순으로 추출해 JSON 형태로 반환해주세요.
 """
@@ -72,6 +74,11 @@ class TimelineService:
         except Exception as e:
             print(f"Error in timeline reconstruction: {e}")
             return []
+
+    def _truncate_text(self, text: str, max_chars: int) -> str:
+        if not text or len(text) <= max_chars:
+            return text or ""
+        return text[:max_chars] + "\n\n[이하 내용은 토큰 제한으로 생략됨]"
 
 timeline_service = TimelineService()
 

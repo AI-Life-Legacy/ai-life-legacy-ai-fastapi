@@ -367,6 +367,46 @@ Warm pastel colors, peaceful and nostalgic storybook art style, clean edges, hig
             if idx < len(toc_plan):
                 chapter.chapter_title = toc_plan[idx]
 
+    def _truncate_text(self, text: str, max_chars: int) -> str:
+        if not text:
+            return ""
+        if len(text) <= max_chars:
+            return text
+        return text[:max_chars] + "\n\n[이하 내용은 토큰 제한으로 생략됨]"
+
+    def _compact_personal_details(self, personal_details: dict) -> dict:
+        compacted = {}
+        for key, value in (personal_details or {}).items():
+            if isinstance(value, list):
+                compacted[key] = [self._truncate_text(str(item), 120) for item in value[:10]]
+            elif isinstance(value, dict):
+                compacted[key] = {
+                    str(k): self._truncate_text(str(v), 120)
+                    for k, v in list(value.items())[:10]
+                }
+            else:
+                compacted[key] = self._truncate_text(str(value), 200)
+        return compacted
+
+    def _fallback_chapter_result(self, chapter) -> dict:
+        scene_lines = []
+        for scene in getattr(chapter, "scenes", []) or []:
+            parts = [
+                getattr(scene, "title", ""),
+                getattr(scene, "setting", ""),
+                getattr(scene, "turning_point", ""),
+                getattr(scene, "resolution", ""),
+                getattr(scene, "reflection", ""),
+            ]
+            line = " ".join(part for part in parts if part).strip()
+            if line:
+                scene_lines.append(line)
+
+        fallback = "\n\n".join(scene_lines)
+        if not fallback:
+            fallback = "이 장의 내용을 생성하는 중 오류가 발생했습니다. 잠시 후 다시 생성해 주세요."
+        return {"content": fallback, "quote": ""}
+
     async def _generate_chapter_text(
         self,
         user_name: str,
@@ -376,12 +416,16 @@ Warm pastel colors, peaceful and nostalgic storybook art style, clean edges, hig
         personal_details: dict,
         personalization: dict | None = None,
     ) -> dict:
-        """
-        援ъ“?붾맂 Scene ?뺣낫瑜?湲곕컲?쇰줈 梨뺥꽣 ?띿뒪?몄? ?먯꽱??Quote瑜??앹꽦?⑸땲??
-        """
         scenes_json = [s.model_dump() for s in chapter.scenes]
+        scenes_text = self._truncate_text(json.dumps(scenes_json, ensure_ascii=False, indent=2), 5000)
+        details_text = self._truncate_text(
+            json.dumps(self._compact_personal_details(personal_details), ensure_ascii=False, indent=2),
+            3500,
+        )
+        context_text = self._truncate_text(additional_context, 8000)
         role_info = CHAPTER_ROLES.get(chapter.chapter_type, CHAPTER_ROLES["family"])
         personalization_context = self._build_personalization_context(personalization or {})
+        personalization_context = self._truncate_text(personalization_context, 2000)
         style = (personalization or {}).get("style") or "detailed"
         style_id = (personalization or {}).get("styleId") or "detailed"
         length_rule = "Write this chapter in 4 to 6 rich paragraphs."
@@ -394,62 +438,61 @@ Warm pastel colors, peaceful and nostalgic storybook art style, clean edges, hig
         elif style_id == "warm":
             length_rule = "Write this chapter warmly, emphasizing people, relationships, gratitude, and memory."
 
-        system_prompt = f"""?뱀떊? ???щ엺???앹븷瑜?源딆씠 ?덈뒗 ?쒖궗濡??쒗쁽?섎뒗 踰좏뀒???먯꽌???묎??낅땲??
-二쇱뼱吏?Scene 援ъ“? 愿??臾몃㎘???대젮 1媛쒖쓽 梨뺥꽣瑜??묒꽦?섏꽭??
+        system_prompt = f"""당신은 사용자 생애 기록을 바탕으로 자서전의 한 장을 작성하는 전문 작가입니다.
+반드시 제공된 기록과 장면 정보 안에서만 쓰고, 확인되지 않은 사실은 만들지 마세요.
 
-[媛쒖씤???묒꽦 湲곗?]
+[개인화 지침]
 {personalization_context}
-- 寃곌낵臾??ㅽ???吏移? {style}
-- 遺꾨웾 吏移? {length_rule}
-- 異붿쿇 紐⑹감? ?꾩옱 梨뺥꽣 ?쒕ぉ???곗꽑 諛섏쁺?섍퀬, 湲곗〈 怨좎젙 紐⑹감泥섎읆 蹂댁씠吏 ?딄쾶 ?묒꽦?섏꽭??
+- 결과 스타일: {style}
+- 분량 지침: {length_rule}
+- 추천 목차가 있다면 현재 챕터 제목을 우선 반영하되, 고정 목차처럼 딱딱하게 보이지 않게 쓰세요.
 
-[梨뺥꽣 ??븷 (Chapter Role)]
-- ???μ쓽 ??븷: {role_info['role']}
-- ?ㅻ쨪????二쇱젣: {role_info['theme']}
-- ?뺤꽌 ?? {role_info['tone']}
-- ?덉슜???앹븷 二쇨린: {chapter.chapter_type}??留욌뒗 ?댁빞湲곕쭔 吏묒쨷?섍퀬 ?ㅻⅨ ?앹븷 ?댁빞湲곕줈 湲멸쾶 ?덉? 留덉꽭??
-- ?쇳빐?????쒖닠: {role_info['avoid']}
+[챕터 역할]
+- 역할: {role_info['role']}
+- 주요 주제: {role_info['theme']}
+- 정서 톤: {role_info['tone']}
+- 집중 범위: {chapter.chapter_type}에 맞는 이야기만 중심으로 쓰세요.
+- 피할 내용: {role_info['avoid']}
 
-[?쒖궗 援ъ“ ?쒖빟 (Narrative Arc Rule) 諛??곌껐 臾몄옣(Transition)]
-1. ?⑥닚 ?ш굔 ?섏뿴 湲덉?: 臾몃떒 援ъ꽦 ??媛湲됱쟻 [?곹솴/諛곌꼍 ??媛덈벑/?좏깮 ??蹂??寃곌낵 ???섎? ?깆같]???먮쫫??諛섏쁺?섏꽭??
-2. 紐⑤뱺 臾몃떒???듭? 援먰썕?쇰줈 ?앸궡吏 留덉꽭?? ?먯뿰?ㅻ윭???ъ슫???④린?몄슂.
-3. ?댁쟾 Scene怨??ㅼ쓬 Scene??臾??먮Ⅴ???댁뼱吏?꾨줉 ?쒓컙 寃쎄낵???대㈃??蹂?붾? ?섑??대뒗 遺?쒕윭???꾪솚(Transition)???ъ슜?섏꽭??
-4. [留ㅼ슦 以묒슂] 蹂몃Ц??留덉?留?臾몃떒 ?앹뿉??諛섎뱶???ㅼ쓬 梨뺥꽣濡??먯뿰?ㅻ읇寃??섏뼱媛??1~2臾몄옣??'?곌껐 臾몄옣(Transition Sentence)'???묒꽦?섏꽭??
-   - ?? 留덉?留?梨뺥꽣??寃쎌슦???쒖쇅?⑸땲??
-   - "?ㅼ쓬 ?μ뿉?쒕뒗 ~??????댁빞湲고븯寃좊떎" ?앹쓽 吏곸꽕?곸씤 ?쒗쁽 ??? ?꾩옱 梨뺥꽣??寃쏀뿕???대뼸寃??ㅼ쓬 梨뺥꽣??諛묎굅由꾩씠 ?섏뿀?붿? ?뚯꽕泥섎읆 遺?쒕읇寃??붿떆?섏꽭??
+[서사 규칙]
+1. 사건을 단순히 나열하지 말고 상황, 선택, 변화, 결과, 성찰이 자연스럽게 이어지게 쓰세요.
+2. 교훈을 노골적으로 설명하기보다 경험에서 자연스럽게 드러나게 하세요.
+3. 마지막 챕터가 아니라면 마지막 문단 끝에 다음 챕터로 이어지는 전환 문장 1~2개를 포함하세요.
+4. 다음 장을 직접 예고하는 표현보다 현재 경험이 다음 시기로 어떻게 이어졌는지 부드럽게 보여 주세요.
 
-[?뷀뀒??利앺룺 ?쒖빟 (Personal Detail Amplifier)]
-- ?쒓났??'怨좎쑀紐낆궗 由ъ뒪??Personal Details)' 以???梨뺥꽣? 留λ씫???용뒗 '?대쫫', '?μ냼', '議곗쭅', '?ш굔'??**理쒖냼 2~3媛??댁긽** 蹂몃Ц??援ъ껜?곸쑝濡??ы븿?섏꽭??
-- "移쒓뎄?ㅺ낵 諛붾떎瑜?媛붾떎" ???"泥좎닔? 湲곗감瑜??怨?媛뺣쫱 諛붾떎瑜?蹂대윭 媛붾떎"泥섎읆 ?ъ떎 湲곕컲??援ъ껜??紐낆궗瑜??곗꽑?섏꽭?? (?? ?녿뒗 ?ъ떎???덈줈 吏?대궡吏 留?寃?
-
-[異쒕젰 ?뺤떇 ?쒗븳 (JSON)]
-?ㅼ쓬 ?뺥깭??JSON??諛섑솚?댁빞 ?⑸땲??
+[출력 형식]
+반드시 JSON 객체만 반환하세요.
 {{
-  "content": "留덊겕?ㅼ슫 ?놁씠 ?묒꽦???쒖닔 蹂몃Ц ?띿뒪??(?⑤씫? \\n\\n 濡?援щ텇). ?곌껐 臾몄옣????蹂몃Ц 留덉?留됱뿉 ?ы븿?섏뼱????",
-  "quote": "??梨뺥꽣 蹂몄뿰??媛먯젙怨??듭떖 硫붿떆吏瑜?愿?듯븯??1~2以꾩쓽 吏㏐퀬 ?몄긽?곸씤 臾몄옣 (?곌껐 臾몄옣???ш린???곗? 留덉꽭??"
+  "content": "마크다운 없이 작성한 순수 본문. 문단은 \\n\\n으로 구분합니다.",
+  "quote": "이 챕터를 관통하는 짧은 문장 1~2줄"
 }}
 """
-        next_chap_str = f"- ?ㅼ쓬 梨뺥꽣 ?쒕ぉ: {next_chapter.chapter_title}\n- ?ㅼ쓬 梨뺥꽣 二쇱젣: {CHAPTER_ROLES.get(next_chapter.chapter_type, dict()).get('theme', '')}" if next_chapter else "- 留덉?留?梨뺥꽣?낅땲?? (?ㅼ쓬 梨뺥꽣濡??곌껐?섎뒗 transition 遺덊븘?? 源딆? ?ъ슫?쇰줈 留덈Т由?"
+        next_chap_str = (
+            f"- 다음 챕터 제목: {next_chapter.chapter_title}\n"
+            f"- 다음 챕터 주제: {CHAPTER_ROLES.get(next_chapter.chapter_type, dict()).get('theme', '')}"
+            if next_chapter
+            else "- 마지막 챕터입니다. 다음 챕터로 연결하는 전환 문장은 넣지 말고 여운 있게 마무리하세요."
+        )
 
 
 
-        user_prompt = f"""[?꾩옱 梨뺥꽣 ?뺣낫]
-- 踰덊샇/?좏삎: Chapter {chapter.chapter_num} ({chapter.chapter_type})
-- ?쒕ぉ: {chapter.chapter_title}
+        user_prompt = f"""[현재 챕터 정보]
+- 번호/유형: Chapter {chapter.chapter_num} ({chapter.chapter_type})
+- 제목: {chapter.chapter_title}
 
-[?ㅼ쓬 梨뺥꽣 ?덇퀬 (Transition ?곌껐??]
+[다음 챕터 정보]
 {next_chap_str}
 
-[?꾩껜 怨좎쑀紐낆궗 ? (Personal Details)]
-{json.dumps(personal_details, ensure_ascii=False, indent=2)}
+[고유명사와 세부 정보]
+{details_text}
 
-[??梨뺥꽣??Scene 援ъ“]
-{json.dumps(scenes_json, ensure_ascii=False, indent=2)}
+[현재 챕터의 장면 구조]
+{scenes_text}
 
-[愿??異붽? 臾몃㎘ ?곗씠??
-{additional_context}
+[관련 생애 기록]
+{context_text}
 
-??吏移⑥쓣 以?섑븯????梨뺥꽣??'content'? 'quote'瑜?JSON?쇰줈 ?묒꽦??二쇱꽭??
+위 자료만 근거로 이 챕터의 content와 quote를 JSON으로 작성하세요.
 """
 
         try:
@@ -466,7 +509,7 @@ Warm pastel colors, peaceful and nostalgic storybook art style, clean edges, hig
             return result
         except Exception as e:
             print(f"Error generating chapter {chapter.chapter_num}: {e}")
-            return {"content": "?댁슜???앹꽦?섎뒗 以??ㅻ쪟媛 諛쒖깮?덉뒿?덈떎.", "quote": ""}
+            return self._fallback_chapter_result(chapter)
 
 autobiography_service = AutobiographyService()
 

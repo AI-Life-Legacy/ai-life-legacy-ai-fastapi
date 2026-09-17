@@ -1,11 +1,11 @@
 import os
 import re
+import shutil
 from pathlib import Path
 
 from app.core.config import settings
 from jinja2 import Template
 from PIL import Image, ImageDraw, ImageStat
-from weasyprint import HTML
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -242,6 +242,18 @@ class PdfService:
         return {"title": data["title"], "spreads": spreads}
 
     def generate_premium_pdf(self, markdown_content: str, output_path: str, theme: str = "classic"):
+        gtk_runtime_dir = Path("C:/Program Files/GTK3-Runtime Win64/bin")
+        fallback_dll = shutil.which("gobject-2.0-0.dll")
+        dll_dir = gtk_runtime_dir if (gtk_runtime_dir / "gobject-2.0-0.dll").exists() else None
+        if not dll_dir and fallback_dll:
+            dll_dir = Path(fallback_dll).parent
+
+        if dll_dir:
+            os.add_dll_directory(str(dll_dir))
+            os.environ["PATH"] = f"{dll_dir}{os.pathsep}{os.environ.get('PATH', '')}"
+
+        from weasyprint import HTML
+
         self.ensure_default_assets()
         raw_data = self.parse_markdown_content(markdown_content)
         spread_data = self.paginate_to_spreads(raw_data)

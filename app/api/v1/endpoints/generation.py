@@ -7,7 +7,7 @@ from app.schemas.generation import (
 from app.services.openai_service import generate_follow_up_question
 from app.services.autobiography_service import autobiography_service
 from app.services.pdf_service import pdf_service
-from app.services.vector_store import retrieve_all_user_contexts
+from app.services.vector_store import add_document, retrieve_all_user_contexts
 from app.core.config import BASE_DIR, settings
 from pathlib import Path
 import os
@@ -160,6 +160,19 @@ async def create_autobiography(request: AutobiographyRequest):
         md_file_path = storage_path / md_filename
         with open(md_file_path, "w", encoding="utf-8") as f:
             f.write(md_content)
+
+        try:
+            await add_document(
+                user_id,
+                md_content,
+                {
+                    "source": "autobiography_generation",
+                    "type": "autobiography_markdown",
+                    "source_id": content_hash,
+                },
+            )
+        except Exception as sync_error:
+            print(f"Warning: Failed to sync generated autobiography to RAG: {sync_error}")
 
         # 6. Generate PDF from MarkDown in generated_pdfs with selected theme
         _, page_count = pdf_service.generate_premium_pdf(md_content, str(pdf_file_path), theme=selected_template)

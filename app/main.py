@@ -1,12 +1,30 @@
 import os
 from pathlib import Path
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from app.api.v1.api import api_router
 from app.api.v1.endpoints import proxy
 from app.core.config import settings, BASE_DIR
 
 app = FastAPI(title="AI Life Legacy Server")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:55123",
+        "http://127.0.0.1:55123",
+        "http://localhost:55124",
+        "http://127.0.0.1:55124",
+        "http://localhost:55125",
+        "http://127.0.0.1:55125",
+        "http://localhost:55126",
+        "http://127.0.0.1:55126",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Ensure required directories exist
 GENERATED_PDFS_DIR = BASE_DIR / "generated_pdfs"
